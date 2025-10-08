@@ -109,3 +109,8 @@ export LD_LIBRARY_PATH=/work/jh250079/n14001/vfd-gds/build/bin:$LD_LIBRARY_PATH
 
 
 ```
+
+
+```sh
+https://chatgpt.com/share/68e69999-0e84-800e-a59f-d8042f5a9053 this is for colva
+```
