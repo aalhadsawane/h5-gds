@@ -99,10 +99,13 @@
 building in miyabi
 
 ```sh
-cmake -S /work/jh250079/n14001/h5-gds -B /work/jh250079/n14001/h5-gds/build \
-  -DVFD_GDS_INC=/work/jh250079/n14001/vfd-gds/src \
-  -DVFD_GDS_LIB=/work/jh250079/n14001/vfd-gds/build/bin \
-  -DCUDA_SAMPLES_DIR=/work/jh250079/n14001/cuda-samples/Common
+cmake -S /work/jh250079/n14001/h5-gds \
+      -B /work/jh250079/n14001/h5-gds/build \
+      -DVFD_GDS_INC=/work/jh250079/n14001/vfd-gds/src \
+      -DVFD_GDS_LIB=/work/jh250079/n14001/vfd-gds/build/bin \
+      -DCUDA_SAMPLES_DIR=/work/jh250079/n14001/cuda-samples/Common \
+      -DHDF5_ROOT=/work/jh250079/n14001/hdf5_install
+
 
 export CPATH=/work/jh250079/n14001/vfd-gds/src:$CPATH
 export LD_LIBRARY_PATH=/work/jh250079/n14001/vfd-gds/build/bin:$LD_LIBRARY_PATH
