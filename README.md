@@ -104,7 +104,9 @@ cmake -S /work/jh250079/n14001/h5-gds \
       -DVFD_GDS_INC=/work/jh250079/n14001/vfd-gds/src \
       -DVFD_GDS_LIB=/work/jh250079/n14001/vfd-gds/build/bin \
       -DCUDA_SAMPLES_DIR=/work/jh250079/n14001/cuda-samples/Common \
-      -DHDF5_ROOT=/work/jh250079/n14001/hdf5_install
+      -DHDF5_ROOT=/work/jh250079/n14001/hdf5_install \
+      -DTARGET_GPU=NVIDIA_CC90 \
+      -USE_SYSTEM_MALLOC=ON
 
 
 export CPATH=/work/jh250079/n14001/vfd-gds/src:$CPATH
