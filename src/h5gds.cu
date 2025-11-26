@@ -61,6 +61,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       "cbuf", boost::program_options::value<size_t>()->default_value(CBSIZE_DEF), "copy buffer size (byte)")(
       "fblk", boost::program_options::value<size_t>()->default_value(FBSIZE_DEF), "file block size (byte)")(
       "memb", boost::program_options::value<size_t>()->default_value(MBOUNDARY_DEF), "memory boundary (byte)")(
+      "vfd", boost::program_options::value<std::string>()->default_value("gds"), "VFD driver to use: sec2, gds, or direct")(
       "skip", boost::program_options::bool_switch()->default_value(false), "skip consistency check between read and original data")(
       "asis", boost::program_options::bool_switch()->default_value(false), "read/write without hyperslab")(
       "virial", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(0.2), "Virial ratio of the system")(
@@ -81,6 +82,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   const auto cbuf = vm["cbuf"].as<size_t>();
   const auto fblk = vm["fblk"].as<size_t>();
   const auto memb = vm["memb"].as<size_t>();
+  const auto vfd_name = vm["vfd"].as<std::string>();
   const auto virial = vm["virial"].as<decltype(newton)>();
   const auto radius = vm["radius"].as<decltype(newton)>();
   const auto mass = vm["mass"].as<decltype(newton)>();
@@ -88,6 +90,12 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   const auto asis = vm["asis"].as<bool>();
   const auto write_xdmf = vm["xdmf"].as<bool>();
   vm.clear();
+  // validate VFD choice
+  if (vfd_name != "sec2" && vfd_name != "gds" && vfd_name != "direct") {
+    std::cerr << "Invalid VFD driver: " << vfd_name << ". Must be one of: sec2, gds, direct" << std::endl;
+    std::cerr << std::fflush;
+    std::exit(EXIT_FAILURE);
+  }
   // copy buffer size must be a multiple of block size
   if ((cbuf % fblk) != 0U) {
     std::cerr << "copy buffer size (" << cbuf << ") must be a multiple of block size (" << fblk << ")";
@@ -140,9 +148,15 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   h5write.allocate(5);  // idx, position (x, y, z), velocity (x, y), velocity (z), and mass
   h5read.allocate(5);   // idx, position (x, y, z), velocity (x, y), velocity (z), and mass
 
-  // prepare to use GPUDirect Storage via HDF5 with VFD
+  // prepare file access property list based on selected VFD
   auto fapl = H5Pcreate(H5P_FILE_ACCESS);
-  H5Pset_fapl_gds(fapl, memb, fblk, cbuf);
+  if (vfd_name == "gds") {
+    H5Pset_fapl_gds(fapl, memb, fblk, cbuf);
+  } else if (vfd_name == "direct") {
+    H5Pset_fapl_direct(fapl, memb, fblk, cbuf);
+  } else {  // sec2
+    H5Pset_fapl_sec2(fapl);
+  }
 
   // create HDF5 file
   auto uuid = boost::uuids::random_generator{}();
@@ -316,6 +330,12 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
   release_particles(pos, vel_xy, vel_z, idx);
   release_particles(pos_read, vel_xy_read, vel_z_read, idx_read);
+
+  // delete the file to save space
+  boost::filesystem::remove(name);
+  if (!asis && write_xdmf) {
+    boost::filesystem::remove("dat/" + series + ".xdmf");
+  }
 
   std::exit(EXIT_SUCCESS);
 }
