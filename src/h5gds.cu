@@ -294,7 +294,9 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
     // write header if report is a new file
     std::ofstream output(report, std::ios::app);
     if (!exist || err) {
-      output << "N";
+      output << "VFD";
+      output << ",skip";
+      output << ",N";
       output << ",data size [byte]";
       output << ",copy buffer size [byte]";
       output << ",file block size [byte]";
@@ -309,7 +311,9 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
     // write statistics of the simulation
     output << std::scientific;
-    output << num;
+    output << vfd_name;
+    output << "," << (skip ? "true" : "false");
+    output << "," << num;
     const auto datasize = static_cast<double>(num) * static_cast<double>(sizeof(std::remove_reference_t<decltype(*idx)>) + sizeof(std::remove_reference_t<decltype(*pos)>) + sizeof(std::remove_reference_t<decltype(*vel_xy)>) + sizeof(std::remove_reference_t<decltype(*vel_z)>));
     output << "," << datasize;
     output << "," << cbuf;
