@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -q debug-g
 #PBS -l select=1
-#PBS -l walltime=00:30:00
+#PBS -l walltime=02:00:00
 #PBS -W group_list=jh250079
 #PBS -j oe
 #PBS -N h5gds_sweep
@@ -9,40 +9,29 @@
 # ============================================
 # BENCHMARK CONFIGURATION
 # ============================================
-# Particle counts (file sizes) - N values
+# Particle counts (file sizes) - N values (powers of 2)
 NUM_VALUES=(
-    1000000      # 1M particles (~36 MB)
-    5000000      # 5M particles (~180 MB)
-    10000000     # 10M particles (~360 MB)
-    20000000     # 20M particles (~720 MB)
-    30000000     # 30M particles (~1.08 GB)
-    50000000     # 50M particles (~1.8 GB)
-    75000000     # 75M particles (~2.7 GB)
-    100000000    # 100M particles (~3.6 GB)
+    1024         # 2^10
+    2048         # 2^11
+    4096         # 2^12
+    8192         # 2^13
+    16384        # 2^14
+    32768        # 2^15
+    65536        # 2^16
+    131072       # 2^17
+    262144       # 2^18
+    524288       # 2^19
+    1048576      # 2^20 (1M)
+    2097152      # 2^21 (2M)
+    4194304      # 2^22 (4M)
+    8388608      # 2^23 (8M)
+    16777216     # 2^24 (16M)
+    33554432     # 2^25 (32M)
+    67108864     # 2^26 (64M)
+    134217728    # 2^27 (128M)
 )
 
-# Block sizes: 512KB to 2GB
-FBLK_VALUES=(
-    4096       # 4 KB
-    8192       # 8 KB
-    16384      # 16 KB
-    32768      # 32 KB
-    65536      # 64 KB
-    131072     # 128 KB
-    262144     # 256 KB
-    524288     # 512 KB
-    1048576    # 1 MB
-    2097152    # 2 MB
-    4194304    # 4 MB
-    8388608    # 8 MB
-    16777216   # 16 MB
-    33554432   # 32 MB
-    67108864   # 64 MB
-)
-
-CBUF_MULTIPLIER_VALUES=(1)
-
-# VFD modes to test
+# VFD modes to test: sec2, gds-native, gds-compat
 VFD_MODES=(sec2 gds-native gds-compat)
 
 # GDS configuration files
@@ -50,7 +39,6 @@ GDS_NATIVE_JSON="${PBS_O_WORKDIR}/disable_compat.json"
 GDS_COMPAT_JSON="${PBS_O_WORKDIR}/force_compat.json"
 
 ELAPSE_MAX=120s
-ITERATIONS=1
 
 # ============================================
 # ENVIRONMENT SETUP
@@ -61,30 +49,6 @@ module unload nvidia
 
 echo "=== Loaded Modules ==="
 module list
-echo ""
-
-# Set HDF5 environment
-export HDF5_HOME=/work/jh250079/n14001/hdf5_install
-export PATH=$HDF5_HOME/bin:$PATH
-export LD_LIBRARY_PATH=$HDF5_HOME/lib:$LD_LIBRARY_PATH
-
-# Set VFD-GDS environment
-export CPATH=/work/jh250079/n14001/vfd-gds/src:$CPATH
-export LD_LIBRARY_PATH=/work/jh250079/n14001/vfd-gds/build/bin:$LD_LIBRARY_PATH
-export HDF5_PLUGIN_PATH=/work/jh250079/n14001/h5-gds/build/bin/
-
-# Set cuFile configuration for GDS
-export CUFILE_ENV_PATH_JSON=${PBS_O_WORKDIR}/disable_compat.json
-
-echo "=== Environment Configuration ==="
-echo "HDF5_HOME: $HDF5_HOME"
-echo "HDF5_PLUGIN_PATH: $HDF5_PLUGIN_PATH"
-echo "CUDA_HOME: $CUDA_HOME"
-echo "CUFILE_ENV_PATH_JSON: $CUFILE_ENV_PATH_JSON"
-echo ""
-
-# Start timestamp
-echo "=== Job Start: $(date) ==="
 echo ""
 
 # ============================================
@@ -109,7 +73,7 @@ echo ""
 # Run GDS health check
 if [ -f "$CUDA_HOME/gds/tools/gdscheck" ]; then
     echo "=== GPUDirect Storage Health Check ==="
-    numactl --cpunodebind=$NUMA_NODE --membind=$NUMA_NODE $CUDA_HOME/gds/tools/gdscheck -p
+    numactl --localalloc ${CUDA_PATH}/gds/tools/gdscheck -p
     echo ""
 else
     echo "WARNING: gdscheck not found, skipping GDS verification"
@@ -138,7 +102,7 @@ echo ""
 # ============================================
 # PARAMETER SWEEP
 # ============================================
-TOTAL_RUNS=$((${#NUM_VALUES[@]} * ${#FBLK_VALUES[@]} * ${#CBUF_MULTIPLIER_VALUES[@]} * ${#VFD_MODES[@]}))
+TOTAL_RUNS=$((${#NUM_VALUES[@]} * ${#VFD_MODES[@]}))
 CURRENT_RUN=0
 
 echo "=== Starting Parameter Sweep ==="
@@ -146,66 +110,59 @@ echo "Total configurations to test: ${TOTAL_RUNS}"
 echo ""
 
 # Loop over VFD modes
-for VFD in "${VFD_MODES[@]}"
+for VFD_MODE in "${VFD_MODES[@]}"
 do
     echo "========================================="
-    echo "VFD MODE: ${VFD}"
+    echo "VFD MODE: ${VFD_MODE}"
     echo "========================================="
 
     # Configure GDS mode and set actual VFD driver
-    if [ "$VFD" == "gds-native" ]; then
+    if [ "$VFD_MODE" == "gds-native" ]; then
         export CUFILE_ENV_PATH_JSON="${GDS_NATIVE_JSON}"
         ACTUAL_VFD="gds"
         echo "Using GDS Native mode (disable_compat.json)"
-    elif [ "$VFD" == "gds-compat" ]; then
+    elif [ "$VFD_MODE" == "gds-compat" ]; then
         export CUFILE_ENV_PATH_JSON="${GDS_COMPAT_JSON}"
         ACTUAL_VFD="gds"
         echo "Using GDS Compat mode (force_compat.json)"
     else
         # For sec2, no JSON needed
         unset CUFILE_ENV_PATH_JSON
-        ACTUAL_VFD="$VFD"
+        ACTUAL_VFD="$VFD_MODE"
     fi
+    
+    echo "CUFILE_ENV_PATH_JSON: ${CUFILE_ENV_PATH_JSON:-not set}"
+    echo ""
 
     # Loop over particle counts (file sizes)
     for NUM in "${NUM_VALUES[@]}"
     do
-        # Loop over block sizes
-        for FBLK in "${FBLK_VALUES[@]}"
-        do
-            # Loop over copy buffer multipliers
-            for MULTIPLIER in "${CBUF_MULTIPLIER_VALUES[@]}"
-            do
-                # Calculate copy buffer size (must be multiple of block size)
-                CBUF=$((FBLK * MULTIPLIER))
+        CURRENT_RUN=$((CURRENT_RUN + 1))
 
-                CURRENT_RUN=$((CURRENT_RUN + 1))
+        echo ""
+        echo "--- Run ${CURRENT_RUN}/${TOTAL_RUNS} ---"
+        echo "MODE=$VFD_MODE, VFD=$ACTUAL_VFD, NUM=$NUM"
 
-                echo ""
-                echo "--- Run ${CURRENT_RUN}/${TOTAL_RUNS} ---"
-                echo "VFD=$VFD, NUM=$NUM, FBLK=$FBLK, CBUF=$CBUF (${MULTIPLIER}x), ITERATIONS=$ITERATIONS"
+        # Run benchmark with NUMA affinity
+        timeout ${ELAPSE_MAX} numactl --localalloc \
+            bin/h5gds \
+            --asis \
+            --num $NUM \
+            --vfd $ACTUAL_VFD
 
-                # Run benchmark with NUMA affinity
-                timeout ${ELAPSE_MAX} numactl --cpunodebind=$NUMA_NODE --membind=$NUMA_NODE \
-                    bin/h5gds \
-                    --asis \
-                    --num $NUM \
-                    --fblk $FBLK \
-                    --cbuf $CBUF \
-                    --vfd $ACTUAL_VFD
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 124 ]; then
+            echo "WARNING: Benchmark timed out after ${ELAPSE_MAX}"
+        elif [ $EXIT_CODE -ne 0 ]; then
+            echo "ERROR: Benchmark failed with exit code $EXIT_CODE"
+        fi
 
-                EXIT_CODE=$?
-                if [ $EXIT_CODE -eq 124 ]; then
-                    echo "WARNING: Benchmark timed out after ${ELAPSE_MAX}"
-                elif [ $EXIT_CODE -ne 0 ]; then
-                    echo "ERROR: Benchmark failed with exit code $EXIT_CODE"
-                fi
+        # Sync results to temp directory periodically
+        rsync -av log/ ${TEMP}/log/
+        
+        # Sleep to allow system to stabilize between runs
+        sleep 1
 
-                # Sync results to temp directory periodically
-                rsync -av log/ ${TEMP}/log/
-
-            done  # CBUF_MULTIPLIER loop
-        done  # FBLK loop
     done  # NUM loop
 
     echo ""
