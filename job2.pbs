@@ -1,194 +1,253 @@
-#!/bin/bash
-#PBS -q debug-g
-#PBS -l select=1
-#PBS -l walltime=02:00:00
-#PBS -W group_list=jh250079
-#PBS -j oe
-#PBS -N h5gds_sweep
+            #!/bin/bash
+            #PBS -q short-g
+            #PBS -l select=1
+            #PBS -l walltime=02:00:00
+            #PBS -W group_list=jh250079
+            #PBS -j oe
+            #PBS -N h5gds_sweep
 
-# ============================================
-# BENCHMARK CONFIGURATION
-# ============================================
-# Particle counts (file sizes) - N values (powers of 2)
-NUM_VALUES=(
-    1024         # 2^10
-    2048         # 2^11
-    4096         # 2^12
-    8192         # 2^13
-    16384        # 2^14
-    32768        # 2^15
-    65536        # 2^16
-    131072       # 2^17
-    262144       # 2^18
-    524288       # 2^19
-    1048576      # 2^20 (1M)
-    2097152      # 2^21 (2M)
-    4194304      # 2^22 (4M)
-    8388608      # 2^23 (8M)
-    16777216     # 2^24 (16M)
-    33554432     # 2^25 (32M)
-    67108864     # 2^26 (64M)
-    134217728    # 2^27 (128M)
-)
+            # ============================================
+            # BENCHMARK CONFIGURATION
+            # ============================================
+            # Particle counts (file sizes) - N values (powers of 2)
+            NUM_VALUES=(
+                1024         # 2^10
+                2048         # 2^11
+                4096         # 2^12
+                8192         # 2^13
+                16384        # 2^14
+                32768        # 2^15
+                65536        # 2^16
+                131072       # 2^17
+                262144       # 2^18
+                524288       # 2^19
+                1048576      # 2^20 (1M)
+                2097152      # 2^21 (2M)
+                4194304      # 2^22 (4M)
+                8388608      # 2^23 (8M)
+                16777216     # 2^24 (16M)
+                33554432     # 2^25 (32M)
+                67108864     # 2^26 (64M)
+                134217728    # 2^27 (128M)
+            )
 
-# VFD modes to test: sec2, gds-native, gds-compat
-VFD_MODES=(sec2 gds-native gds-compat)
+            # Chunk buffer sizes (in bytes, powers of 2 from 1KB to 16MB)
+            CBUF_VALUES=(
+                1024          # 2^10 = 1KB
+                2048          # 2^11 = 2KB
+                4096          # 2^12 = 4KB
+                8192          # 2^13 = 8KB
+                16384         # 2^14 = 16KB
+                32768         # 2^15 = 32KB
+                65536         # 2^16 = 64KB
+                131072        # 2^17 = 128KB
+                262144        # 2^18 = 256KB
+                524288        # 2^19 = 512KB
+                1048576       # 2^20 = 1MB
+                2097152       # 2^21 = 2MB
+                4194304       # 2^22 = 4MB
+                8388608       # 2^23 = 8MB
+                16777216      # 2^24 = 16MB
+            )
 
-# GDS configuration files
-GDS_NATIVE_JSON="${PBS_O_WORKDIR}/disable_compat.json"
-GDS_COMPAT_JSON="${PBS_O_WORKDIR}/force_compat.json"
+            # File block sizes (in bytes, powers of 2 from 1KB to 16MB)
+            FBLK_VALUES=(
+                1024          # 2^10 = 1KB
+                2048          # 2^11 = 2KB
+                4096          # 2^12 = 4KB
+                8192          # 2^13 = 8KB
+                16384         # 2^14 = 16KB
+                32768         # 2^15 = 32KB
+                65536         # 2^16 = 64KB
+                131072        # 2^17 = 128KB
+                262144        # 2^18 = 256KB
+                524288        # 2^19 = 512KB
+                1048576       # 2^20 = 1MB
+                2097152       # 2^21 = 2MB
+                4194304       # 2^22 = 4MB
+                8388608       # 2^23 = 8MB
+                16777216      # 2^24 = 16MB
+            )
 
-ELAPSE_MAX=120s
+            # VFD modes to test: sec2, gds-native, gds-compat
+            VFD_MODES=(sec2 gds-native gds-compat)
 
-# ============================================
-# ENVIRONMENT SETUP
-# ============================================
-module purge
-module load cuda
-module unload nvidia
+            # GDS configuration files
+            GDS_NATIVE_JSON="${PBS_O_WORKDIR}/disable_compat.json"
+            GDS_COMPAT_JSON="${PBS_O_WORKDIR}/force_compat.json"
 
-echo "=== Loaded Modules ==="
-module list
-echo ""
+            ELAPSE_MAX=120s
 
-# ============================================
-# GPU CONFIGURATION (Fixed at GPU 0)
-# ============================================
-GPU_ID=0
-export CUDA_VISIBLE_DEVICES=$GPU_ID
+            # ============================================
+            # ENVIRONMENT SETUP
+            # ============================================
+            module purge
+            module load cuda
+            module unload nvidia
 
-echo "=== Using GPU $GPU_ID ==="
+            echo "=== Loaded Modules ==="
+            module list
+            echo ""
 
-# Get GPU PCIe bus ID and NUMA node
-BUS_ID=$(nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader | tr '[:upper:]' '[:lower:]' | sed 's/^0\{0,\}\([0-9]\{4\}\)/\1/')
-NUMA_NODE=$(cat /sys/bus/pci/devices/$BUS_ID/numa_node)
+            # ============================================
+            # GPU CONFIGURATION (Fixed at GPU 0)
+            # ============================================
+            GPU_ID=0
+            export CPATH=/work/jh250079/n14001/vfd-gds/src:$CPATH
 
-echo "GPU $GPU_ID: BUS_ID=$BUS_ID, NUMA_NODE=$NUMA_NODE"
+            echo "=== Using GPU $GPU_ID ==="
 
-# Display GPU topology
-echo "=== GPU Topology ==="
-nvidia-smi topo -m
-echo ""
+            # Get GPU PCIe bus ID and NUMA node
+            BUS_ID=$(nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader | tr '[:upper:]' '[:lower:]' | sed 's/^0\{0,\}\([0-9]\{4\}\)/\1/')
+            NUMA_NODE=$(cat /sys/bus/pci/devices/$BUS_ID/numa_node)
 
-# Run GDS health check
-if [ -f "$CUDA_HOME/gds/tools/gdscheck" ]; then
-    echo "=== GPUDirect Storage Health Check ==="
-    numactl --localalloc ${CUDA_PATH}/gds/tools/gdscheck -p
-    echo ""
-else
-    echo "WARNING: gdscheck not found, skipping GDS verification"
-fi
+            echo "GPU $GPU_ID: BUS_ID=$BUS_ID, NUMA_NODE=$NUMA_NODE"
 
-# ============================================
-# DIRECTORY SETUP
-# ============================================
-ROOT="/tmp/yogesh/gpu${GPU_ID}"
-TEMP="${PBS_O_WORKDIR}/temp"
-DUMP="${PBS_O_WORKDIR}/results"
+            # Display GPU topology
+            echo "=== GPU Topology ==="
+            nvidia-smi topo -m
+            echo ""
 
-mkdir -p "${ROOT}"
-mkdir -p "${TEMP}"
-mkdir -p "${DUMP}"
+            # Run GDS health check
+            if [ -f "$CUDA_HOME/gds/tools/gdscheck" ]; then
+                echo "=== GPUDirect Storage Health Check ==="
+                numactl --localalloc ${CUDA_PATH}/gds/tools/gdscheck -p
+                echo ""
+            else
+                echo "WARNING: gdscheck not found, skipping GDS verification"
+            fi
 
-# Copy executable and prepare directories
-cd "${ROOT}"
-cp -r ${PBS_O_WORKDIR}/bin .
-mkdir -p dat log
+            # ============================================
+            # DIRECTORY SETUP
+            # ============================================
+            ROOT="/tmp/yogesh/gpu${GPU_ID}"
+            TEMP="${PBS_O_WORKDIR}/temp"
+            DUMP="${PBS_O_WORKDIR}/results"
 
-echo "Working directory: ${ROOT}"
-echo "Results will be saved to: ${DUMP}"
-echo ""
+            mkdir -p "${ROOT}"
+            mkdir -p "${TEMP}"
+            mkdir -p "${DUMP}"
 
-# ============================================
-# PARAMETER SWEEP
-# ============================================
-TOTAL_RUNS=$((${#NUM_VALUES[@]} * ${#VFD_MODES[@]}))
-CURRENT_RUN=0
+            # Copy executable and prepare directories
+            cd "${ROOT}"
+            cp -r ${PBS_O_WORKDIR}/bin .
+            mkdir -p dat log
 
-echo "=== Starting Parameter Sweep ==="
-echo "Total configurations to test: ${TOTAL_RUNS}"
-echo ""
+            echo "Working directory: ${ROOT}"
+            echo "Results will be saved to: ${DUMP}"
+            echo ""
 
-# Loop over VFD modes
-for VFD_MODE in "${VFD_MODES[@]}"
-do
-    echo "========================================="
-    echo "VFD MODE: ${VFD_MODE}"
-    echo "========================================="
+            # ============================================
+            # PARAMETER SWEEP
+            # ============================================
+            TOTAL_RUNS=$((${#NUM_VALUES[@]} * ${#CBUF_VALUES[@]} * ${#FBLK_VALUES[@]} * ${#VFD_MODES[@]}))
+            CURRENT_RUN=0
 
-    # Configure GDS mode and set actual VFD driver
-    if [ "$VFD_MODE" == "gds-native" ]; then
-        export CUFILE_ENV_PATH_JSON="${GDS_NATIVE_JSON}"
-        ACTUAL_VFD="gds"
-        echo "Using GDS Native mode (disable_compat.json)"
-    elif [ "$VFD_MODE" == "gds-compat" ]; then
-        export CUFILE_ENV_PATH_JSON="${GDS_COMPAT_JSON}"
-        ACTUAL_VFD="gds"
-        echo "Using GDS Compat mode (force_compat.json)"
-    else
-        # For sec2, no JSON needed
-        unset CUFILE_ENV_PATH_JSON
-        ACTUAL_VFD="$VFD_MODE"
-    fi
-    
-    echo "CUFILE_ENV_PATH_JSON: ${CUFILE_ENV_PATH_JSON:-not set}"
-    echo ""
+            echo "=== Starting Parameter Sweep ==="
+            echo "Total configurations to test: ${TOTAL_RUNS}"
+            echo "  - VFD modes: ${#VFD_MODES[@]}"
+            echo "  - NUM values: ${#NUM_VALUES[@]}"
+            echo "  - CBUF values: ${#CBUF_VALUES[@]}"
+            echo "  - FBLK values: ${#FBLK_VALUES[@]}"
+            echo ""
 
-    # Loop over particle counts (file sizes)
-    for NUM in "${NUM_VALUES[@]}"
-    do
-        CURRENT_RUN=$((CURRENT_RUN + 1))
+            # Loop over VFD modes
+            for VFD_MODE in "${VFD_MODES[@]}"
+            do
+                echo "========================================="
+                echo "VFD MODE: ${VFD_MODE}"
+                echo "========================================="
 
-        echo ""
-        echo "--- Run ${CURRENT_RUN}/${TOTAL_RUNS} ---"
-        echo "MODE=$VFD_MODE, VFD=$ACTUAL_VFD, NUM=$NUM"
+                # Configure GDS mode and set actual VFD driver
+                if [ "$VFD_MODE" == "gds-native" ]; then
+                    export CUFILE_ENV_PATH_JSON="${GDS_NATIVE_JSON}"
+                    ACTUAL_VFD="gds"
+                    echo "Using GDS Native mode (disable_compat.json)"
+                elif [ "$VFD_MODE" == "gds-compat" ]; then
+                    export CUFILE_ENV_PATH_JSON="${GDS_COMPAT_JSON}"
+                    ACTUAL_VFD="gds"
+                    echo "Using GDS Compat mode (force_compat.json)"
+                else
+                    # For sec2, no JSON needed
+                    unset CUFILE_ENV_PATH_JSON
+                    ACTUAL_VFD="$VFD_MODE"
+                fi
+                
+                echo "CUFILE_ENV_PATH_JSON: ${CUFILE_ENV_PATH_JSON:-not set}"
+                echo ""
 
-        # Run benchmark with NUMA affinity
-        timeout ${ELAPSE_MAX} numactl --localalloc \
-            bin/h5gds \
-            --asis \
-            --num $NUM \
-            --vfd $ACTUAL_VFD
+                # Loop over chunk buffer sizes
+                for CBUF in "${CBUF_VALUES[@]}"
+                do
+                    echo "--- CBUF: ${CBUF} bytes ---"
+                    
+                    # Loop over file block sizes
+                    for FBLK in "${FBLK_VALUES[@]}"
+                    do
+                        echo "  --- FBLK: ${FBLK} bytes ---"
+                        
+                        # Loop over particle counts (file sizes)
+                        for NUM in "${NUM_VALUES[@]}"
+                        do
+                            CURRENT_RUN=$((CURRENT_RUN + 1))
 
-        EXIT_CODE=$?
-        if [ $EXIT_CODE -eq 124 ]; then
-            echo "WARNING: Benchmark timed out after ${ELAPSE_MAX}"
-        elif [ $EXIT_CODE -ne 0 ]; then
-            echo "ERROR: Benchmark failed with exit code $EXIT_CODE"
-        fi
+                            echo ""
+                            echo "--- Run ${CURRENT_RUN}/${TOTAL_RUNS} ---"
+                            echo "MODE=$VFD_MODE, VFD=$ACTUAL_VFD, CBUF=${CBUF}B, FBLK=${FBLK}B, NUM=$NUM"
 
-        # Sync results to temp directory periodically
-        rsync -av log/ ${TEMP}/log/
-        
-        # Sleep to allow system to stabilize between runs
-        sleep 1
+                            # Run benchmark with NUMA affinity
+                            timeout ${ELAPSE_MAX} numactl --localalloc \
+                                bin/h5gds \
+                                --asis \
+                                --num $NUM \
+                                --cbuf $CBUF \
+                                --fblk $FBLK \
+                                --vfd $ACTUAL_VFD
 
-    done  # NUM loop
+                            EXIT_CODE=$?
+                            if [ $EXIT_CODE -eq 124 ]; then
+                                echo "WARNING: Benchmark timed out after ${ELAPSE_MAX}"
+                            elif [ $EXIT_CODE -ne 0 ]; then
+                                echo "ERROR: Benchmark failed with exit code $EXIT_CODE"
+                            fi
 
-    echo ""
-done  # VFD loop
+                            # Sync results to temp directory periodically
+                            rsync -av log/ ${TEMP}/log/
+                            
+                            # Sleep to allow system to stabilize between runs
+                            sleep 1
 
-# ============================================
-# CLEANUP AND RESULTS
-# ============================================
-echo "=== Copying final results to ${DUMP}/ ==="
-rsync -av log/ ${DUMP}/log/
-cp log/h5gds_benchmark.csv ${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv
+                        done  # NUM loop
+                        
+                    done  # FBLK loop
+                    
+                done  # CBUF loop
 
-echo "=== Cleaning up scratch space ==="
-rm -rf ${ROOT}
-rm -rf ${TEMP}
+                echo ""
+            done  # VFD loop
 
-echo ""
-echo "=== Job Finish: $(date) ==="
-echo "Results saved to: ${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv"
+            # ============================================
+            # CLEANUP AND RESULTS
+            # ============================================
+            echo "=== Copying final results to ${DUMP}/ ==="
+            rsync -av log/ ${DUMP}/log/
+            cp log/h5gds_benchmark.csv ${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv
 
-# Display summary statistics
-if [ -f "${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv" ]; then
-    echo ""
-    echo "=== Benchmark Summary ==="
-    echo "Total rows: $(wc -l < ${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv)"
-    head -1 ${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv
-fi
+            echo "=== Cleaning up scratch space ==="
+            rm -rf ${ROOT}
+            rm -rf ${TEMP}
 
-exit 0
+            echo ""
+            echo "=== Job Finish: $(date) ==="
+            echo "Results saved to: ${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv"
+
+            # Display summary statistics
+            if [ -f "${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv" ]; then
+                echo ""
+                echo "=== Benchmark Summary ==="
+                echo "Total rows: $(wc -l < ${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv)"
+                head -1 ${DUMP}/h5gds_benchmark_gpu${GPU_ID}.csv
+            fi
+
+
+                exit 0
