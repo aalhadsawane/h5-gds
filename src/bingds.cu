@@ -352,12 +352,16 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
   // memory allocation
   cudaSetDevice(0);
+  
+  // Print memory allocation strategy
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+  std::cout << "Memory allocation strategy: DEVICE MEMORY (cudaMalloc)" << std::endl;
   type::idx *idx = nullptr;        // particle ID
   type::pos *pos = nullptr;        // position (x, y, z) and mass (w)
   type::vel_xy *vel_xy = nullptr;  // velocity (x, y)
   type::vel_z *vel_z = nullptr;    // velocity (z)
 #else                              //! defined(HOST_MALLOC_AND_FIRST_TOUCH)
+  std::cout << "Memory allocation strategy: UNIFIED MEMORY (cudaMallocManaged / HOST_MALLOC_AND_FIRST_TOUCH)" << std::endl;
   type::idx *idx;        // particle ID
   type::pos *pos;        // position (x, y, z) and mass (w)
   type::vel_xy *vel_xy;  // velocity (x, y)
@@ -510,12 +514,14 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
         // Copy all data to aligned buffer
         char* buf_ptr = (char*)aligned_buffer_write;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+        std::cout << "  [Direct Write] Using cudaMemcpy (DeviceToHost)" << std::endl;
         cudaMemcpy(buf_ptr, idx, idx_size, cudaMemcpyDeviceToHost); buf_ptr += idx_size;
         cudaMemcpy(buf_ptr, pos, pos_size, cudaMemcpyDeviceToHost); buf_ptr += pos_size;
         cudaMemcpy(buf_ptr, vel_xy, vel_xy_size, cudaMemcpyDeviceToHost); buf_ptr += vel_xy_size;
         cudaMemcpy(buf_ptr, vel_z, vel_z_size, cudaMemcpyDeviceToHost);
 #else
         // For unified memory, use fast memcpy
+        std::cout << "  [Direct Write] Using host memcpy (unified memory)" << std::endl;
         memcpy(buf_ptr, idx, idx_size); buf_ptr += idx_size;
         memcpy(buf_ptr, pos, pos_size); buf_ptr += pos_size;
         memcpy(buf_ptr, vel_xy, vel_xy_size); buf_ptr += vel_xy_size;
@@ -556,12 +562,14 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
         // Copy data from aligned buffer to device
         char* buf_ptr = (char*)aligned_buffer_read;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+        std::cout << "  [Direct Read] Using cudaMemcpy (HostToDevice)" << std::endl;
         cudaMemcpy(idx_read, buf_ptr, idx_size, cudaMemcpyHostToDevice); buf_ptr += idx_size;
         cudaMemcpy(pos_read, buf_ptr, pos_size, cudaMemcpyHostToDevice); buf_ptr += pos_size;
         cudaMemcpy(vel_xy_read, buf_ptr, vel_xy_size, cudaMemcpyHostToDevice); buf_ptr += vel_xy_size;
         cudaMemcpy(vel_z_read, buf_ptr, vel_z_size, cudaMemcpyHostToDevice);
 #else
         // For unified memory, use fast memcpy
+        std::cout << "  [Direct Read] Using host memcpy (unified memory)" << std::endl;
         memcpy(idx_read, buf_ptr, idx_size); buf_ptr += idx_size;
         memcpy(pos_read, buf_ptr, pos_size); buf_ptr += pos_size;
         memcpy(vel_xy_read, buf_ptr, vel_xy_size); buf_ptr += vel_xy_size;
@@ -593,12 +601,14 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       elapse_write = benchmark([&]() {
         char* buf_ptr = (char*)host_buffer_write;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+        std::cout << "  [POSIX Write] Using cudaMemcpy (DeviceToHost)" << std::endl;
         cudaMemcpy(buf_ptr, idx, idx_size, cudaMemcpyDeviceToHost); buf_ptr += idx_size;
         cudaMemcpy(buf_ptr, pos, pos_size, cudaMemcpyDeviceToHost); buf_ptr += pos_size;
         cudaMemcpy(buf_ptr, vel_xy, vel_xy_size, cudaMemcpyDeviceToHost); buf_ptr += vel_xy_size;
         cudaMemcpy(buf_ptr, vel_z, vel_z_size, cudaMemcpyDeviceToHost);
 #else
         // For unified memory, use fast memcpy
+        std::cout << "  [POSIX Write] Using host memcpy (unified memory)" << std::endl;
         memcpy(buf_ptr, idx, idx_size); buf_ptr += idx_size;
         memcpy(buf_ptr, pos, pos_size); buf_ptr += pos_size;
         memcpy(buf_ptr, vel_xy, vel_xy_size); buf_ptr += vel_xy_size;
@@ -641,12 +651,14 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
         // Copy data from buffer to device
         char* buf_ptr = (char*)host_buffer_read;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+        std::cout << "  [POSIX Read] Using cudaMemcpy (HostToDevice)" << std::endl;
         cudaMemcpy(idx_read, buf_ptr, idx_size, cudaMemcpyHostToDevice); buf_ptr += idx_size;
         cudaMemcpy(pos_read, buf_ptr, pos_size, cudaMemcpyHostToDevice); buf_ptr += pos_size;
         cudaMemcpy(vel_xy_read, buf_ptr, vel_xy_size, cudaMemcpyHostToDevice); buf_ptr += vel_xy_size;
         cudaMemcpy(vel_z_read, buf_ptr, vel_z_size, cudaMemcpyHostToDevice);
 #else
         // For unified memory, use fast memcpy
+        std::cout << "  [POSIX Read] Using host memcpy (unified memory)" << std::endl;
         memcpy(idx_read, buf_ptr, idx_size); buf_ptr += idx_size;
         memcpy(pos_read, buf_ptr, pos_size); buf_ptr += pos_size;
         memcpy(vel_xy_read, buf_ptr, vel_xy_size); buf_ptr += vel_xy_size;
@@ -658,6 +670,9 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       close(fd_read);
       free(host_buffer_read);
     }
+
+    // Ensure all memory transfers are complete before verification
+    cudaDeviceSynchronize();
 
     // Verify read data
     success = skip ? true : (thrust::equal(thrust::device, (thrust::device_ptr<std::remove_reference_t<decltype(*idx)>>)idx, (thrust::device_ptr<std::remove_reference_t<decltype(*idx)>>)(idx + num), (thrust::device_ptr<std::remove_reference_t<decltype(*idx_read)>>)idx_read) && thrust::equal(thrust::device, (thrust::device_ptr<std::remove_reference_t<decltype(*pos)>>)pos, (thrust::device_ptr<std::remove_reference_t<decltype(*pos)>>)(pos + num), (thrust::device_ptr<std::remove_reference_t<decltype(*pos_read)>>)pos_read, compare_pos()) && thrust::equal(thrust::device, (thrust::device_ptr<std::remove_reference_t<decltype(*vel_xy)>>)vel_xy, (thrust::device_ptr<std::remove_reference_t<decltype(*vel_xy)>>)(vel_xy + num), (thrust::device_ptr<std::remove_reference_t<decltype(*vel_xy_read)>>)vel_xy_read, compare_vel_xy()) && thrust::equal(thrust::device, (thrust::device_ptr<std::remove_reference_t<decltype(*vel_z)>>)vel_z, (thrust::device_ptr<std::remove_reference_t<decltype(*vel_z)>>)(vel_z + num), (thrust::device_ptr<std::remove_reference_t<decltype(*vel_z_read)>>)vel_z_read));
