@@ -84,7 +84,7 @@ void cufile_write(const std::string& filename, const T* device_ptr, size_t size_
   }
 
   // Deregister and close
-  CHECK_CUFILE_ERROR(cuFileHandleDeregister(cf_handle));
+  cuFileHandleDeregister(cf_handle);  // Returns void, no error checking needed
   close(fd);
 }
 
@@ -116,7 +116,7 @@ void cufile_read(const std::string& filename, T* device_ptr, size_t size_bytes, 
   }
 
   // Deregister and close
-  CHECK_CUFILE_ERROR(cuFileHandleDeregister(cf_handle));
+  cuFileHandleDeregister(cf_handle);  // Returns void, no error checking needed
   close(fd);
 }
 
@@ -225,7 +225,7 @@ void posix_write(const std::string& filename, const T* device_ptr, size_t size_b
   cudaMemcpy(host_buffer, device_ptr, size_bytes, cudaMemcpyDeviceToHost);
 #else
   // For unified memory (Grace Hopper), use pointer directly - no copy needed
-  const void* host_buffer = device_ptr;
+  void* host_buffer = (void*)device_ptr;
 #endif
 
   // Open file (standard, uses page cache)
@@ -457,7 +457,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       });
 
       // Deregister and close (NOT timed)
-      CHECK_CUFILE_ERROR(cuFileHandleDeregister(cf_handle_write));
+      cuFileHandleDeregister(cf_handle_write);  // Returns void, no error checking needed
       close(fd_write);
 
       // ===== cuFile Read =====
@@ -485,7 +485,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       });
 
       // Deregister and close (NOT timed)
-      CHECK_CUFILE_ERROR(cuFileHandleDeregister(cf_handle_read));
+      cuFileHandleDeregister(cf_handle_read);  // Returns void, no error checking needed
       close(fd_read);
     } else if (method == "direct") {
       // ===== Direct I/O Write =====
