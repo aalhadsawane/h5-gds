@@ -83,3 +83,41 @@ if(USE_SYSTEM_MALLOC)
   )
 endif(USE_SYSTEM_MALLOC)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES ${NVIDIA_GPU_HARD})
+
+# compile benchmark code: GPUDirect Storage with binary files
+project(bingds CXX CUDA)
+message(STATUS "Generate ${PROJECT_NAME} ...")
+
+# define the executable
+set(SOURCES ${PROJECT_SOURCE_DIR}/src/bingds.cu ${PROJECT_SOURCE_DIR}/src/allocate.cu ${PROJECT_SOURCE_DIR}/src/generate.cu)
+
+add_executable(${PROJECT_NAME}
+  ${SOURCES}
+)
+
+find_package(CUDA REQUIRED)
+find_package(CUDA_samples REQUIRED)
+
+# apply common settings
+include(${USER_MODULE_PATH}/apply_common_settings.cmake)
+
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
+  ${CUDA_samples_INCLUDE_DIRS}
+)
+
+# Link cuFile library
+find_library(CUFILE_LIBRARY cufile HINTS /usr/local/cuda/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/targets/x86_64-linux/lib)
+if(NOT CUFILE_LIBRARY)
+  message(WARNING "cuFile library not found. Binary GDS benchmark may not link properly.")
+else()
+  message(STATUS "Found cuFile library: ${CUFILE_LIBRARY}")
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${CUFILE_LIBRARY})
+endif()
+
+if(USE_SYSTEM_MALLOC)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC
+    $<$<BOOL:${USE_SYSTEM_MALLOC}>:HOST_MALLOC_AND_FIRST_TOUCH>
+  )
+endif(USE_SYSTEM_MALLOC)
+set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES ${NVIDIA_GPU_HARD})
+

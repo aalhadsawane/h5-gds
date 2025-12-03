@@ -1,0 +1,124 @@
+#!/bin/bash
+#PBS -N bingds_benchmark
+#PBS -l select=1:ncpus=72:ngpus=1
+#PBS -l walltime=02:00:00
+#PBS -q gpu
+
+# Binary I/O Benchmark (cuFile, Direct I/O, POSIX)
+# For Grace Hopper architecture with GPUDirect Storage
+
+cd $PBS_O_WORKDIR
+
+# Configuration
+NUM_MIN=1024
+NUM_MAX=134217728
+ELAPSE_MAX=60s
+
+# Load modules (adjust for your system)
+module purge
+module load cuda
+module load boost
+module load cuda-samples
+
+# Start logging
+echo "========================================"
+echo "Binary I/O Benchmark (bingds)"
+echo "Start time: $(date)"
+echo "========================================"
+module list
+echo ""
+
+# Set GPU
+export CUDA_VISIBLE_DEVICES=0
+GPU_ID=0
+
+# Get NUMA node for GPU
+BUS_ID=$(nvidia-smi --format=csv,noheader --query-gpu=gpu_bus_id -i $GPU_ID | awk -F ":" '{print "0000:" $2 ":" $3}' | tr '[:upper:]' '[:lower:]')
+NUMA_NODE=$(cat /sys/bus/pci/devices/$BUS_ID/numa_node)
+echo "GPU $GPU_ID on NUMA node $NUMA_NODE"
+echo ""
+
+# Setup directories
+SCRATCH_ROOT=/tmp/bingds_benchmark_$$
+mkdir -p "$SCRATCH_ROOT"
+cd "$SCRATCH_ROOT"
+
+# Copy binaries and create output directories
+cp ${PBS_O_WORKDIR}/bin/bingds .
+mkdir -p dat
+mkdir -p log
+
+# GDS configuration files
+cp ${PBS_O_WORKDIR}/disable_compat.json .
+cp ${PBS_O_WORKDIR}/force_compat.json .
+
+# Run GDS check
+echo "Running GDS validation..."
+gdscheck -p
+echo ""
+
+# Test all three I/O methods
+for IO_METHOD in "cufile" "direct" "posix"
+do
+    echo "========================================"
+    echo "Testing I/O method: $IO_METHOD"
+    echo "========================================"
+    
+    for GDS_MODE in 0 1
+    do
+        if [ "$IO_METHOD" == "cufile" ]; then
+            # Only test GDS modes for cuFile
+            if [ $GDS_MODE -eq 0 ]; then
+                # Native GDS mode
+                export CUFILE_ENV_PATH_JSON=${SCRATCH_ROOT}/disable_compat.json
+                GDS_TAG=native
+                echo "  cuFile mode: GDS Native"
+            else
+                # Compatible mode (uses compatibility layer)
+                export CUFILE_ENV_PATH_JSON=${SCRATCH_ROOT}/force_compat.json
+                GDS_TAG=compat
+                echo "  cuFile mode: GDS Compatible"
+            fi
+        else
+            # For Direct I/O and POSIX, skip second iteration
+            if [ $GDS_MODE -eq 1 ]; then
+                continue
+            fi
+            GDS_TAG=""
+        fi
+        
+        # Run benchmark for different particle counts
+        for (( NUM = $NUM_MIN ; NUM <= $NUM_MAX ; NUM *= 2 ))
+        do
+            echo "  Particles: $NUM"
+            
+            # Clear cache if possible (requires root, comment out if not available)
+            # sync ; echo 3 > /proc/sys/vm/drop_caches
+            
+            # Run benchmark with NUMA binding
+            timeout ${ELAPSE_MAX} numactl --cpunodebind=$NUMA_NODE --localalloc \
+                ./bingds --num $NUM --$IO_METHOD
+            
+            # Copy results back incrementally
+            rsync -av log/ ${PBS_O_WORKDIR}/log/
+        done
+        
+        echo ""
+    done
+done
+
+# Copy final results
+echo "Copying final results..."
+rsync -av log/ ${PBS_O_WORKDIR}/log/
+rsync -av dat/ ${PBS_O_WORKDIR}/dat/
+
+# Cleanup
+cd ${PBS_O_WORKDIR}
+rm -rf "$SCRATCH_ROOT"
+
+# Finish logging
+echo "========================================"
+echo "Finish time: $(date)"
+echo "========================================"
+
+exit 0
