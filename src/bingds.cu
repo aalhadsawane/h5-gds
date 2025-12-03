@@ -525,6 +525,9 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
         write(fd_write, aligned_buffer_write, aligned_size);
       });
 
+      // Ensure data is written to disk (NOT timed)
+      fsync(fd_write);
+      
       // Close and cleanup (NOT timed)
       close(fd_write);
       free(aligned_buffer_write);
@@ -605,9 +608,14 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
         write(fd_write, host_buffer_write, total_size);
       });
 
+      // Ensure data is written to disk (NOT timed)
+      fsync(fd_write);
+      
       // Close and cleanup (NOT timed)
       close(fd_write);
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
       free(host_buffer_write);
+#endif
 
       // ===== Standard POSIX Read =====
       // Allocate buffer (NOT timed)

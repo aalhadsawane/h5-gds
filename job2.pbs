@@ -1,124 +1,174 @@
 #!/bin/bash
-#PBS -N bingds_benchmark
-#PBS -l select=1:ncpus=72:ngpus=1
-#PBS -l walltime=02:00:00
-#PBS -q gpu
+#PBS -q debug-g
+#PBS -l select=1
+#PBS -l walltime=00:30:00
+#PBS -W group_list=jh250079
+#PBS -j oe
+#PBS -N bingds_sweep
 
-# Binary I/O Benchmark (cuFile, Direct I/O, POSIX)
-# For Grace Hopper architecture with GPUDirect Storage
+# ============================================
+# BENCHMARK CONFIGURATION
+# ============================================
+# Particle counts (file sizes)
+NUM_VALUES=(64000000)
 
-cd $PBS_O_WORKDIR
+# I/O methods to test
+IO_METHODS=(cufile direct posix)
 
-# Configuration
-NUM_MIN=1024
-NUM_MAX=134217728
-ELAPSE_MAX=60s
+ELAPSE_MAX=120s
 
-# Load modules (adjust for your system)
+# ============================================
+# ENVIRONMENT SETUP
+# ============================================
 module purge
 module load cuda
-module load boost
-module load cuda-samples
+module unload nvidia
 
-# Start logging
-echo "========================================"
-echo "Binary I/O Benchmark (bingds)"
-echo "Start time: $(date)"
-echo "========================================"
+echo "=== Loaded Modules ==="
 module list
 echo ""
 
-# Set GPU
-export CUDA_VISIBLE_DEVICES=0
+# Set cuFile configuration for GDS
+export CUFILE_ENV_PATH_JSON=${PBS_O_WORKDIR}/cufile.json
+
+echo "=== Environment Configuration ==="
+echo "CUDA_HOME: $CUDA_HOME"
+echo "CUFILE_ENV_PATH_JSON: $CUFILE_ENV_PATH_JSON"
+echo ""
+
+# Start timestamp
+echo "=== Job Start: $(date) ==="
+echo ""
+
+# ============================================
+# GPU CONFIGURATION (Fixed at GPU 0)
+# ============================================
 GPU_ID=0
+export CUDA_VISIBLE_DEVICES=$GPU_ID
 
-# Get NUMA node for GPU
-BUS_ID=$(nvidia-smi --format=csv,noheader --query-gpu=gpu_bus_id -i $GPU_ID | awk -F ":" '{print "0000:" $2 ":" $3}' | tr '[:upper:]' '[:lower:]')
+echo "=== Using GPU $GPU_ID ==="
+
+# Get GPU PCIe bus ID and NUMA node
+BUS_ID=$(nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader | tr '[:upper:]' '[:lower:]' | sed 's/^0\{0,\}\([0-9]\{4\}\)/\1/')
 NUMA_NODE=$(cat /sys/bus/pci/devices/$BUS_ID/numa_node)
-echo "GPU $GPU_ID on NUMA node $NUMA_NODE"
+
+echo "GPU $GPU_ID: BUS_ID=$BUS_ID, NUMA_NODE=$NUMA_NODE"
+
+# Display GPU topology
+echo "=== GPU Topology ==="
+nvidia-smi topo -m
 echo ""
 
-# Setup directories
-SCRATCH_ROOT=/tmp/bingds_benchmark_$$
-mkdir -p "$SCRATCH_ROOT"
-cd "$SCRATCH_ROOT"
+# Run GDS health check
+if [ -f "$CUDA_HOME/gds/tools/gdscheck" ]; then
+    echo "=== GPUDirect Storage Health Check ==="
+    numactl --cpunodebind=$NUMA_NODE --membind=$NUMA_NODE $CUDA_HOME/gds/tools/gdscheck -p
+    echo ""
+else
+    echo "WARNING: gdscheck not found, skipping GDS verification"
+fi
 
-# Copy binaries and create output directories
-cp ${PBS_O_WORKDIR}/bin/bingds .
-mkdir -p dat
-mkdir -p log
+# ============================================
+# DIRECTORY SETUP
+# ============================================
+ROOT="/tmp/yogesh/gpu${GPU_ID}"
+TEMP="${PBS_O_WORKDIR}/temp"
+DUMP="${PBS_O_WORKDIR}/results"
 
-# GDS configuration files
-cp ${PBS_O_WORKDIR}/disable_compat.json .
-cp ${PBS_O_WORKDIR}/force_compat.json .
+mkdir -p "${ROOT}"
+mkdir -p "${TEMP}"
+mkdir -p "${DUMP}"
 
-# Run GDS check
-echo "Running GDS validation..."
-gdscheck -p
+# Copy executable and prepare directories
+cd "${ROOT}"
+cp -r ${PBS_O_WORKDIR}/bin .
+mkdir -p dat log
+
+echo "Working directory: ${ROOT}"
+echo "Results will be saved to: ${DUMP}"
 echo ""
 
-# Test all three I/O methods
-for IO_METHOD in "cufile" "direct" "posix"
+# ============================================
+# PARAMETER SWEEP
+# ============================================
+TOTAL_RUNS=$((${#NUM_VALUES[@]} * ${#IO_METHODS[@]}))
+CURRENT_RUN=0
+
+echo "=== Starting Parameter Sweep ==="
+echo "Total configurations to test: ${TOTAL_RUNS}"
+echo ""
+
+# Loop over I/O methods
+for METHOD in "${IO_METHODS[@]}"
 do
-    echo "========================================"
-    echo "Testing I/O method: $IO_METHOD"
-    echo "========================================"
+    echo "========================================="
+    echo "I/O METHOD: ${METHOD}"
+    echo "========================================="
     
-    for GDS_MODE in 0 1
+    # Loop over particle counts (file sizes)
+    for NUM in "${NUM_VALUES[@]}"
     do
-        if [ "$IO_METHOD" == "cufile" ]; then
-            # Only test GDS modes for cuFile
-            if [ $GDS_MODE -eq 0 ]; then
-                # Native GDS mode
-                export CUFILE_ENV_PATH_JSON=${SCRATCH_ROOT}/disable_compat.json
-                GDS_TAG=native
-                echo "  cuFile mode: GDS Native"
-            else
-                # Compatible mode (uses compatibility layer)
-                export CUFILE_ENV_PATH_JSON=${SCRATCH_ROOT}/force_compat.json
-                GDS_TAG=compat
-                echo "  cuFile mode: GDS Compatible"
-            fi
-        else
-            # For Direct I/O and POSIX, skip second iteration
-            if [ $GDS_MODE -eq 1 ]; then
-                continue
-            fi
-            GDS_TAG=""
-        fi
-        
-        # Run benchmark for different particle counts
-        for (( NUM = $NUM_MIN ; NUM <= $NUM_MAX ; NUM *= 2 ))
-        do
-            echo "  Particles: $NUM"
-            
-            # Clear cache if possible (requires root, comment out if not available)
-            # sync ; echo 3 > /proc/sys/vm/drop_caches
-            
-            # Run benchmark with NUMA binding
-            timeout ${ELAPSE_MAX} numactl --cpunodebind=$NUMA_NODE --localalloc \
-                ./bingds --num $NUM --$IO_METHOD
-            
-            # Copy results back incrementally
-            rsync -av log/ ${PBS_O_WORKDIR}/log/
-        done
+        CURRENT_RUN=$((CURRENT_RUN + 1))
         
         echo ""
-    done
-done
+        echo "--- Run ${CURRENT_RUN}/${TOTAL_RUNS} ---"
+        echo "METHOD=$METHOD, NUM=$NUM"
+        
+        # Set the appropriate I/O flag
+        case $METHOD in
+            cufile)
+                IO_FLAG="--cufile"
+                ;;
+            direct)
+                IO_FLAG="--direct"
+                ;;
+            posix)
+                IO_FLAG="--posix"
+                ;;
+        esac
+        
+        # Run benchmark with NUMA affinity
+        timeout ${ELAPSE_MAX} numactl --cpunodebind=$NUMA_NODE --membind=$NUMA_NODE \
+            bin/bingds \
+            --num $NUM \
+            $IO_FLAG
+        
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 124 ]; then
+            echo "WARNING: Benchmark timed out after ${ELAPSE_MAX}"
+        elif [ $EXIT_CODE -ne 0 ]; then
+            echo "ERROR: Benchmark failed with exit code $EXIT_CODE"
+        fi
+        
+        # Sync results to temp directory periodically
+        rsync -av log/ ${TEMP}/log/
+        
+    done  # NUM loop
+    
+    echo ""
+done  # METHOD loop
 
-# Copy final results
-echo "Copying final results..."
-rsync -av log/ ${PBS_O_WORKDIR}/log/
-rsync -av dat/ ${PBS_O_WORKDIR}/dat/
+# ============================================
+# CLEANUP AND RESULTS
+# ============================================
+echo "=== Copying final results to ${DUMP}/ ==="
+rsync -av log/ ${DUMP}/log/
+cp log/bingds_benchmark.csv ${DUMP}/bingds_benchmark_gpu${GPU_ID}.csv
 
-# Cleanup
-cd ${PBS_O_WORKDIR}
-rm -rf "$SCRATCH_ROOT"
+echo "=== Cleaning up scratch space ==="
+rm -rf ${ROOT}
+rm -rf ${TEMP}
 
-# Finish logging
-echo "========================================"
-echo "Finish time: $(date)"
-echo "========================================"
+echo ""
+echo "=== Job Finish: $(date) ==="
+echo "Results saved to: ${DUMP}/bingds_benchmark_gpu${GPU_ID}.csv"
+
+# Display summary statistics
+if [ -f "${DUMP}/bingds_benchmark_gpu${GPU_ID}.csv" ]; then
+    echo ""
+    echo "=== Benchmark Summary ==="
+    echo "Total rows: $(wc -l < ${DUMP}/bingds_benchmark_gpu${GPU_ID}.csv)"
+    head -1 ${DUMP}/bingds_benchmark_gpu${GPU_ID}.csv
+fi
 
 exit 0
