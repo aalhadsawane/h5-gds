@@ -248,157 +248,183 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       close(fd_read);
     } else if (method == "direct") {
       // ===== Direct I/O Write =====
-      // Allocate aligned buffer (NOT timed)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+      // For device memory, need aligned buffer
       size_t aligned_size = align_size(total_size, ALIGNMENT);
       void* aligned_buffer_write = nullptr;
       if (posix_memalign(&aligned_buffer_write, ALIGNMENT, aligned_size) != 0) {
         std::cerr << "Failed to allocate aligned buffer" << std::endl;
         std::exit(EXIT_FAILURE);
       }
+#endif
 
       // Open file (NOT timed)
       int fd_write = open(name.c_str(), O_CREAT | O_WRONLY | O_DIRECT, 0644);
       if (fd_write < 0) {
         std::cerr << "Failed to open file for Direct I/O write" << std::endl;
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
         free(aligned_buffer_write);
+#endif
         std::exit(EXIT_FAILURE);
       }
 
       // Benchmark: data copy + write (this is the I/O pipeline)
       elapse_write = benchmark([&]() {
-        // Copy all data to aligned buffer
-        char* buf_ptr = (char*)aligned_buffer_write;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+        char* buf_ptr = (char*)aligned_buffer_write;
         cudaMemcpy(buf_ptr, idx, idx_size, cudaMemcpyDeviceToHost); buf_ptr += idx_size;
         cudaMemcpy(buf_ptr, pos, pos_size, cudaMemcpyDeviceToHost); buf_ptr += pos_size;
         cudaMemcpy(buf_ptr, vel_xy, vel_xy_size, cudaMemcpyDeviceToHost); buf_ptr += vel_xy_size;
         cudaMemcpy(buf_ptr, vel_z, vel_z_size, cudaMemcpyDeviceToHost);
-#else
-        memcpy(buf_ptr, idx, idx_size); buf_ptr += idx_size;
-        memcpy(buf_ptr, pos, pos_size); buf_ptr += pos_size;
-        memcpy(buf_ptr, vel_xy, vel_xy_size); buf_ptr += vel_xy_size;
-        memcpy(buf_ptr, vel_z, vel_z_size);
-#endif
         write(fd_write, aligned_buffer_write, aligned_size);
+#else
+        // For unified memory, write directly (memory is already aligned for GH200)
+        write(fd_write, idx, idx_size);
+        write(fd_write, pos, pos_size);
+        write(fd_write, vel_xy, vel_xy_size);
+        write(fd_write, vel_z, vel_z_size);
+#endif
       });
 
-      // Ensure data is written to disk (NOT timed)
-      fsync(fd_write);
-      
       // Close and cleanup (NOT timed)
       close(fd_write);
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
       free(aligned_buffer_write);
+#endif
+
 
       // ===== Direct I/O Read =====
-      // Allocate aligned buffer (NOT timed)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+      // For device memory, need aligned buffer
+      size_t aligned_size = align_size(total_size, ALIGNMENT);
       void* aligned_buffer_read = nullptr;
       if (posix_memalign(&aligned_buffer_read, ALIGNMENT, aligned_size) != 0) {
         std::cerr << "Failed to allocate aligned buffer" << std::endl;
         std::exit(EXIT_FAILURE);
       }
+#endif
 
       // Open file (NOT timed)
       int fd_read = open(name.c_str(), O_RDONLY | O_DIRECT);
       if (fd_read < 0) {
         std::cerr << "Failed to open file for Direct I/O read" << std::endl;
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
         free(aligned_buffer_read);
+#endif
         std::exit(EXIT_FAILURE);
       }
 
       // Benchmark: read + data copy (this is the I/O pipeline)
       elapse_read = benchmark([&]() {
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
         read(fd_read, aligned_buffer_read, aligned_size);
         
         char* buf_ptr = (char*)aligned_buffer_read;
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
         cudaMemcpy(idx_read, buf_ptr, idx_size, cudaMemcpyHostToDevice); buf_ptr += idx_size;
         cudaMemcpy(pos_read, buf_ptr, pos_size, cudaMemcpyHostToDevice); buf_ptr += pos_size;
         cudaMemcpy(vel_xy_read, buf_ptr, vel_xy_size, cudaMemcpyHostToDevice); buf_ptr += vel_xy_size;
         cudaMemcpy(vel_z_read, buf_ptr, vel_z_size, cudaMemcpyHostToDevice);
 #else
-        memcpy(idx_read, buf_ptr, idx_size); buf_ptr += idx_size;
-        memcpy(pos_read, buf_ptr, pos_size); buf_ptr += pos_size;
-        memcpy(vel_xy_read, buf_ptr, vel_xy_size); buf_ptr += vel_xy_size;
-        memcpy(vel_z_read, buf_ptr, vel_z_size);
+        // For unified memory, read directly (memory is already aligned for GH200)
+        read(fd_read, idx_read, idx_size);
+        read(fd_read, pos_read, pos_size);
+        read(fd_read, vel_xy_read, vel_xy_size);
+        read(fd_read, vel_z_read, vel_z_size);
 #endif
       });
 
       // Close file (NOT timed)
       close(fd_read);
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
       free(aligned_buffer_read);
+#endif
     } else if (method == "posix") {
       // ===== Standard POSIX Write =====
-      // Allocate buffer (NOT timed)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+      // For device memory, need intermediate buffer
       void* host_buffer_write = malloc(total_size);
       if (!host_buffer_write) {
         std::cerr << "Failed to allocate host buffer" << std::endl;
         std::exit(EXIT_FAILURE);
       }
+#endif
 
       // Open file (NOT timed)
       int fd_write = open(name.c_str(), O_CREAT | O_WRONLY, 0644);
       if (fd_write < 0) {
         std::cerr << "Failed to open file for POSIX write" << std::endl;
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
         free(host_buffer_write);
+#endif
         std::exit(EXIT_FAILURE);
       }
 
       // Benchmark: data copy + write (this is the I/O pipeline)
       elapse_write = benchmark([&]() {
-        char* buf_ptr = (char*)host_buffer_write;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+        char* buf_ptr = (char*)host_buffer_write;
         cudaMemcpy(buf_ptr, idx, idx_size, cudaMemcpyDeviceToHost); buf_ptr += idx_size;
         cudaMemcpy(buf_ptr, pos, pos_size, cudaMemcpyDeviceToHost); buf_ptr += pos_size;
         cudaMemcpy(buf_ptr, vel_xy, vel_xy_size, cudaMemcpyDeviceToHost); buf_ptr += vel_xy_size;
         cudaMemcpy(buf_ptr, vel_z, vel_z_size, cudaMemcpyDeviceToHost);
-#else
-        memcpy(buf_ptr, idx, idx_size); buf_ptr += idx_size;
-        memcpy(buf_ptr, pos, pos_size); buf_ptr += pos_size;
-        memcpy(buf_ptr, vel_xy, vel_xy_size); buf_ptr += vel_xy_size;
-        memcpy(buf_ptr, vel_z, vel_z_size);
-#endif
         write(fd_write, host_buffer_write, total_size);
+#else
+        // For unified memory, write directly from unified memory pointers
+        write(fd_write, idx, idx_size);
+        write(fd_write, pos, pos_size);
+        write(fd_write, vel_xy, vel_xy_size);
+        write(fd_write, vel_z, vel_z_size);
+#endif
       });
 
-      fsync(fd_write);
       close(fd_write);
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
       free(host_buffer_write);
+#endif
+
 
       // ===== Standard POSIX Read =====
-      // Allocate buffer (NOT timed)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+      // For device memory, need intermediate buffer
       void* host_buffer_read = malloc(total_size);
       if (!host_buffer_read) {
         std::cerr << "Failed to allocate host buffer" << std::endl;
         std::exit(EXIT_FAILURE);
       }
+#endif
 
       // Open file (NOT timed)
       int fd_read = open(name.c_str(), O_RDONLY);
       if (fd_read < 0) {
         std::cerr << "Failed to open file for POSIX read" << std::endl;
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
         free(host_buffer_read);
+#endif
         std::exit(EXIT_FAILURE);
       }
 
       elapse_read = benchmark([&]() {
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
         read(fd_read, host_buffer_read, total_size);
         char* buf_ptr = (char*)host_buffer_read;
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
         cudaMemcpy(idx_read, buf_ptr, idx_size, cudaMemcpyHostToDevice); buf_ptr += idx_size;
         cudaMemcpy(pos_read, buf_ptr, pos_size, cudaMemcpyHostToDevice); buf_ptr += pos_size;
         cudaMemcpy(vel_xy_read, buf_ptr, vel_xy_size, cudaMemcpyHostToDevice); buf_ptr += vel_xy_size;
         cudaMemcpy(vel_z_read, buf_ptr, vel_z_size, cudaMemcpyHostToDevice);
 #else
-        memcpy(idx_read, buf_ptr, idx_size); buf_ptr += idx_size;
-        memcpy(pos_read, buf_ptr, pos_size); buf_ptr += pos_size;
-        memcpy(vel_xy_read, buf_ptr, vel_xy_size); buf_ptr += vel_xy_size;
-        memcpy(vel_z_read, buf_ptr, vel_z_size);
+        // For unified memory, read directly into unified memory pointers
+        read(fd_read, idx_read, idx_size);
+        read(fd_read, pos_read, pos_size);
+        read(fd_read, vel_xy_read, vel_xy_size);
+        read(fd_read, vel_z_read, vel_z_size);
 #endif
       });
 
       // Close file (NOT timed)
       close(fd_read);
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
       free(host_buffer_read);
+#endif
     }
 
     // Ensure all memory transfers are complete before verification
