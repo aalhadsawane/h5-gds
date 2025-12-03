@@ -57,247 +57,6 @@ static inline size_t align_size(size_t size, size_t alignment) {
   } while (0)
 
 ///
-/// @brief Write data using cuFile API
-///
-template <typename T>
-void cufile_write(const std::string& filename, const T* device_ptr, size_t size_bytes, size_t offset = 0) {
-  // Open file for writing
-  int fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_DIRECT, 0644);
-  if (fd < 0) {
-    std::cerr << "Failed to open file for cuFile write: " << filename << std::endl;
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Register file with cuFile
-  CUfileDescr_t cf_descr;
-  memset(&cf_descr, 0, sizeof(CUfileDescr_t));
-  cf_descr.handle.fd = fd;
-  cf_descr.type = CU_FILE_HANDLE_TYPE_OPAQUE_FD;
-  CUfileHandle_t cf_handle;
-  CHECK_CUFILE_ERROR(cuFileHandleRegister(&cf_handle, &cf_descr));
-
-  // Write data
-  ssize_t written = cuFileWrite(cf_handle, (void*)device_ptr, size_bytes, offset, 0);
-  if (written < 0 || (size_t)written != size_bytes) {
-    std::cerr << "cuFile write failed, bytes written: " << written << std::endl;
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Deregister and close
-  cuFileHandleDeregister(cf_handle);  // Returns void, no error checking needed
-  close(fd);
-}
-
-///
-/// @brief Read data using cuFile API
-///
-template <typename T>
-void cufile_read(const std::string& filename, T* device_ptr, size_t size_bytes, size_t offset = 0) {
-  // Open file for reading
-  int fd = open(filename.c_str(), O_RDONLY | O_DIRECT);
-  if (fd < 0) {
-    std::cerr << "Failed to open file for cuFile read: " << filename << std::endl;
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Register file with cuFile
-  CUfileDescr_t cf_descr;
-  memset(&cf_descr, 0, sizeof(CUfileDescr_t));
-  cf_descr.handle.fd = fd;
-  cf_descr.type = CU_FILE_HANDLE_TYPE_OPAQUE_FD;
-  CUfileHandle_t cf_handle;
-  CHECK_CUFILE_ERROR(cuFileHandleRegister(&cf_handle, &cf_descr));
-
-  // Read data
-  ssize_t bytes_read = cuFileRead(cf_handle, (void*)device_ptr, size_bytes, offset, 0);
-  if (bytes_read < 0 || (size_t)bytes_read != size_bytes) {
-    std::cerr << "cuFile read failed, bytes read: " << bytes_read << std::endl;
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Deregister and close
-  cuFileHandleDeregister(cf_handle);  // Returns void, no error checking needed
-  close(fd);
-}
-
-///
-/// @brief Write data using POSIX Direct I/O
-///
-template <typename T>
-void posix_direct_write(const std::string& filename, const T* device_ptr, size_t size_bytes) {
-  // Allocate aligned buffer for Direct I/O
-  void* aligned_buffer = nullptr;
-  size_t aligned_size = align_size(size_bytes, ALIGNMENT);
-  
-  if (posix_memalign(&aligned_buffer, ALIGNMENT, aligned_size) != 0) {
-    std::cerr << "Failed to allocate aligned buffer" << std::endl;
-    std::exit(EXIT_FAILURE);
-  }
-
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-  // Copy from device to aligned host buffer (only needed for device memory)
-  cudaMemcpy(aligned_buffer, device_ptr, size_bytes, cudaMemcpyDeviceToHost);
-#else
-  // For unified memory (Grace Hopper), just copy within host memory
-  memcpy(aligned_buffer, device_ptr, size_bytes);
-#endif
-
-  // Open file with O_DIRECT
-  int fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_DIRECT, 0644);
-  if (fd < 0) {
-    std::cerr << "Failed to open file for Direct I/O write: " << filename << std::endl;
-    free(aligned_buffer);
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Write data
-  ssize_t written = write(fd, aligned_buffer, aligned_size);
-  if (written < 0 || (size_t)written != aligned_size) {
-    std::cerr << "Direct I/O write failed, bytes written: " << written << std::endl;
-    free(aligned_buffer);
-    close(fd);
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Ensure data is written to disk
-  fsync(fd);
-  close(fd);
-  free(aligned_buffer);
-}
-
-///
-/// @brief Read data using POSIX Direct I/O
-///
-template <typename T>
-void posix_direct_read(const std::string& filename, T* device_ptr, size_t size_bytes) {
-  // Allocate aligned buffer for Direct I/O
-  void* aligned_buffer = nullptr;
-  size_t aligned_size = align_size(size_bytes, ALIGNMENT);
-  
-  if (posix_memalign(&aligned_buffer, ALIGNMENT, aligned_size) != 0) {
-    std::cerr << "Failed to allocate aligned buffer" << std::endl;
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Open file with O_DIRECT
-  int fd = open(filename.c_str(), O_RDONLY | O_DIRECT);
-  if (fd < 0) {
-    std::cerr << "Failed to open file for Direct I/O read: " << filename << std::endl;
-    free(aligned_buffer);
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Read data
-  ssize_t bytes_read = read(fd, aligned_buffer, aligned_size);
-  if (bytes_read < 0 || (size_t)bytes_read != aligned_size) {
-    std::cerr << "Direct I/O read failed, bytes read: " << bytes_read << std::endl;
-    free(aligned_buffer);
-    close(fd);
-    std::exit(EXIT_FAILURE);
-  }
-
-  close(fd);
-
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-  // Copy from aligned host buffer to device (only needed for device memory)
-  cudaMemcpy(device_ptr, aligned_buffer, size_bytes, cudaMemcpyHostToDevice);
-#else
-  // For unified memory (Grace Hopper), just copy within host memory
-  memcpy((void*)device_ptr, aligned_buffer, size_bytes);
-#endif
-  free(aligned_buffer);
-}
-
-///
-/// @brief Write data using standard POSIX (with page cache)
-///
-template <typename T>
-void posix_write(const std::string& filename, const T* device_ptr, size_t size_bytes) {
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-  // Allocate host buffer (only needed for device memory)
-  void* host_buffer = malloc(size_bytes);
-  if (!host_buffer) {
-    std::cerr << "Failed to allocate host buffer" << std::endl;
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Copy from device to host buffer
-  cudaMemcpy(host_buffer, device_ptr, size_bytes, cudaMemcpyDeviceToHost);
-#else
-  // For unified memory (Grace Hopper), use pointer directly - no copy needed
-  void* host_buffer = (void*)device_ptr;
-#endif
-
-  // Open file (standard, uses page cache)
-  int fd = open(filename.c_str(), O_CREAT | O_WRONLY, 0644);
-  if (fd < 0) {
-    std::cerr << "Failed to open file for POSIX write: " << filename << std::endl;
-    free(host_buffer);
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Write data
-  ssize_t written = write(fd, host_buffer, size_bytes);
-  if (written < 0 || (size_t)written != size_bytes) {
-    std::cerr << "POSIX write failed, bytes written: " << written << std::endl;
-    free(host_buffer);
-    close(fd);
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Optional: fsync to ensure data is written
-  fsync(fd);
-  close(fd);
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-  free(host_buffer);
-#endif
-}
-
-///
-/// @brief Read data using standard POSIX (with page cache)
-///
-template <typename T>
-void posix_read(const std::string& filename, T* device_ptr, size_t size_bytes) {
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-  // Allocate host buffer (only needed for device memory)
-  void* host_buffer = malloc(size_bytes);
-  if (!host_buffer) {
-    std::cerr << "Failed to allocate host buffer" << std::endl;
-    std::exit(EXIT_FAILURE);
-  }
-#else
-  // For unified memory (Grace Hopper), use pointer directly - no allocation needed
-  void* host_buffer = device_ptr;
-#endif
-
-  // Open file (standard, uses page cache)
-  int fd = open(filename.c_str(), O_RDONLY);
-  if (fd < 0) {
-    std::cerr << "Failed to open file for POSIX read: " << filename << std::endl;
-    free(host_buffer);
-    std::exit(EXIT_FAILURE);
-  }
-
-  // Read data
-  ssize_t bytes_read = read(fd, host_buffer, size_bytes);
-  if (bytes_read < 0 || (size_t)bytes_read != size_bytes) {
-    std::cerr << "POSIX read failed, bytes read: " << bytes_read << std::endl;
-    free(host_buffer);
-    close(fd);
-    std::exit(EXIT_FAILURE);
-  }
-
-  close(fd);
-
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-  // Copy from host buffer to device (only needed for device memory)
-  cudaMemcpy(device_ptr, host_buffer, size_bytes, cudaMemcpyHostToDevice);
-  free(host_buffer);
-#endif
-  // For unified memory, no copy or free needed
-}
-
-///
 /// @brief main function
 ///
 /// @param[in] argc number of input argument(s)
@@ -361,7 +120,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   type::vel_xy *vel_xy = nullptr;  // velocity (x, y)
   type::vel_z *vel_z = nullptr;    // velocity (z)
 #else                              //! defined(HOST_MALLOC_AND_FIRST_TOUCH)
-  std::cout << "Memory allocation strategy: UNIFIED MEMORY (cudaMallocManaged / HOST_MALLOC_AND_FIRST_TOUCH)" << std::endl;
+  std::cout << "Memory allocation strategy: UNIFIED MEMORY (HOST_MALLOC_AND_FIRST_TOUCH)" << std::endl;
   type::idx *idx;        // particle ID
   type::pos *pos;        // position (x, y, z) and mass (w)
   type::vel_xy *vel_xy;  // velocity (x, y)
@@ -388,10 +147,6 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   const size_t vel_xy_size = num * sizeof(std::remove_reference_t<decltype(*vel_xy)>);
   const size_t vel_z_size = num * sizeof(std::remove_reference_t<decltype(*vel_z)>);
   const size_t total_size = idx_size + pos_size + vel_xy_size + vel_z_size;
-
-  // Generate unique filename
-  auto uuid = boost::uuids::random_generator{}();
-  const auto series = boost::lexical_cast<std::string>(uuid);
 
   // Array to store I/O methods to test
   std::vector<std::string> io_methods;
@@ -420,6 +175,8 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
   // Test each I/O method
   for (const auto& method : io_methods) {
+    auto uuid = boost::uuids::random_generator{}();
+    const auto series = boost::lexical_cast<std::string>(uuid);
     auto name = "dat/" + series + "_" + method + ".bin";
     
     double elapse_write = 0.0;
@@ -436,8 +193,6 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
     allocate_particles(&pos_read, &vel_xy_read, &vel_z_read, &idx_read, num);
 
     if (method == "cufile") {
-      // ===== cuFile Write =====
-      // Open file and register handle (NOT timed)
       int fd_write = open(name.c_str(), O_CREAT | O_WRONLY | O_DIRECT, 0644);
       if (fd_write < 0) {
         std::cerr << "Failed to open file for cuFile write: " << name << std::endl;
@@ -514,20 +269,16 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
         // Copy all data to aligned buffer
         char* buf_ptr = (char*)aligned_buffer_write;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-        std::cout << "  [Direct Write] Using cudaMemcpy (DeviceToHost)" << std::endl;
         cudaMemcpy(buf_ptr, idx, idx_size, cudaMemcpyDeviceToHost); buf_ptr += idx_size;
         cudaMemcpy(buf_ptr, pos, pos_size, cudaMemcpyDeviceToHost); buf_ptr += pos_size;
         cudaMemcpy(buf_ptr, vel_xy, vel_xy_size, cudaMemcpyDeviceToHost); buf_ptr += vel_xy_size;
         cudaMemcpy(buf_ptr, vel_z, vel_z_size, cudaMemcpyDeviceToHost);
 #else
-        // For unified memory, use fast memcpy
-        std::cout << "  [Direct Write] Using host memcpy (unified memory)" << std::endl;
         memcpy(buf_ptr, idx, idx_size); buf_ptr += idx_size;
         memcpy(buf_ptr, pos, pos_size); buf_ptr += pos_size;
         memcpy(buf_ptr, vel_xy, vel_xy_size); buf_ptr += vel_xy_size;
         memcpy(buf_ptr, vel_z, vel_z_size);
 #endif
-        // Write to storage
         write(fd_write, aligned_buffer_write, aligned_size);
       });
 
@@ -556,20 +307,15 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
       // Benchmark: read + data copy (this is the I/O pipeline)
       elapse_read = benchmark([&]() {
-        // Read from storage
         read(fd_read, aligned_buffer_read, aligned_size);
         
-        // Copy data from aligned buffer to device
         char* buf_ptr = (char*)aligned_buffer_read;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-        std::cout << "  [Direct Read] Using cudaMemcpy (HostToDevice)" << std::endl;
         cudaMemcpy(idx_read, buf_ptr, idx_size, cudaMemcpyHostToDevice); buf_ptr += idx_size;
         cudaMemcpy(pos_read, buf_ptr, pos_size, cudaMemcpyHostToDevice); buf_ptr += pos_size;
         cudaMemcpy(vel_xy_read, buf_ptr, vel_xy_size, cudaMemcpyHostToDevice); buf_ptr += vel_xy_size;
         cudaMemcpy(vel_z_read, buf_ptr, vel_z_size, cudaMemcpyHostToDevice);
 #else
-        // For unified memory, use fast memcpy
-        std::cout << "  [Direct Read] Using host memcpy (unified memory)" << std::endl;
         memcpy(idx_read, buf_ptr, idx_size); buf_ptr += idx_size;
         memcpy(pos_read, buf_ptr, pos_size); buf_ptr += pos_size;
         memcpy(vel_xy_read, buf_ptr, vel_xy_size); buf_ptr += vel_xy_size;
@@ -601,31 +347,22 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       elapse_write = benchmark([&]() {
         char* buf_ptr = (char*)host_buffer_write;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-        std::cout << "  [POSIX Write] Using cudaMemcpy (DeviceToHost)" << std::endl;
         cudaMemcpy(buf_ptr, idx, idx_size, cudaMemcpyDeviceToHost); buf_ptr += idx_size;
         cudaMemcpy(buf_ptr, pos, pos_size, cudaMemcpyDeviceToHost); buf_ptr += pos_size;
         cudaMemcpy(buf_ptr, vel_xy, vel_xy_size, cudaMemcpyDeviceToHost); buf_ptr += vel_xy_size;
         cudaMemcpy(buf_ptr, vel_z, vel_z_size, cudaMemcpyDeviceToHost);
 #else
-        // For unified memory, use fast memcpy
-        std::cout << "  [POSIX Write] Using host memcpy (unified memory)" << std::endl;
         memcpy(buf_ptr, idx, idx_size); buf_ptr += idx_size;
         memcpy(buf_ptr, pos, pos_size); buf_ptr += pos_size;
         memcpy(buf_ptr, vel_xy, vel_xy_size); buf_ptr += vel_xy_size;
         memcpy(buf_ptr, vel_z, vel_z_size);
 #endif
-        // Write to storage
         write(fd_write, host_buffer_write, total_size);
       });
 
-      // Ensure data is written to disk (NOT timed)
       fsync(fd_write);
-      
-      // Close and cleanup (NOT timed)
       close(fd_write);
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
       free(host_buffer_write);
-#endif
 
       // ===== Standard POSIX Read =====
       // Allocate buffer (NOT timed)
@@ -643,22 +380,15 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
         std::exit(EXIT_FAILURE);
       }
 
-      // Benchmark: read + data copy (this is the I/O pipeline)
       elapse_read = benchmark([&]() {
-        // Read from storage
         read(fd_read, host_buffer_read, total_size);
-        
-        // Copy data from buffer to device
         char* buf_ptr = (char*)host_buffer_read;
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
-        std::cout << "  [POSIX Read] Using cudaMemcpy (HostToDevice)" << std::endl;
         cudaMemcpy(idx_read, buf_ptr, idx_size, cudaMemcpyHostToDevice); buf_ptr += idx_size;
         cudaMemcpy(pos_read, buf_ptr, pos_size, cudaMemcpyHostToDevice); buf_ptr += pos_size;
         cudaMemcpy(vel_xy_read, buf_ptr, vel_xy_size, cudaMemcpyHostToDevice); buf_ptr += vel_xy_size;
         cudaMemcpy(vel_z_read, buf_ptr, vel_z_size, cudaMemcpyHostToDevice);
 #else
-        // For unified memory, use fast memcpy
-        std::cout << "  [POSIX Read] Using host memcpy (unified memory)" << std::endl;
         memcpy(idx_read, buf_ptr, idx_size); buf_ptr += idx_size;
         memcpy(pos_read, buf_ptr, pos_size); buf_ptr += pos_size;
         memcpy(vel_xy_read, buf_ptr, vel_xy_size); buf_ptr += vel_xy_size;
