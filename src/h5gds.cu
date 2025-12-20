@@ -106,17 +106,17 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
   // memory allocation
   cudaSetDevice(0);
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
   type::idx *idx = nullptr;        // particle ID
   type::pos *pos = nullptr;        // position (x, y, z) and mass (w)
   type::vel_xy *vel_xy = nullptr;  // velocity (x, y)
   type::vel_z *vel_z = nullptr;    // velocity (z)
-#else                              //! defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#else
   type::idx *idx;        // particle ID
   type::pos *pos;        // position (x, y, z) and mass (w)
   type::vel_xy *vel_xy;  // velocity (x, y)
-  type::vel_z *vel_z;  // velocity (z)
-#endif                             //! defined(HOST_MALLOC_AND_FIRST_TOUCH)
+  type::vel_z *vel_z;    // velocity (z)
+#endif
   allocate_particles(&pos, &vel_xy, &vel_z, &idx, num);
 
   // initialize data on GPU

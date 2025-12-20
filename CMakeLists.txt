@@ -7,8 +7,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules")
 # global options
 option(BENCHMARK_MODE "On to perform benchmark" ON)
 message(STATUS "BENCHMARK_MODE is ${BENCHMARK_MODE}")
-option(USE_SYSTEM_MALLOC "On to use system-allocated memory for GPU (NVIDIA GH200 or similar architectures)" OFF)
-message(STATUS "USE_SYSTEM_MALLOC is ${USE_SYSTEM_MALLOC}")
+set(FIRST_TOUCH_MODE "NONE" CACHE STRING "Memory allocation strategy: NONE (cudaMalloc), GPU (host malloc + GPU first-touch), or CPU (host malloc + CPU first-touch)")
+set_property(CACHE FIRST_TOUCH_MODE PROPERTY STRINGS "NONE" "GPU" "CPU")
+message(STATUS "FIRST_TOUCH_MODE is ${FIRST_TOUCH_MODE}")
 
 # enforce Release as build type in benchmark mode
 if(BENCHMARK_MODE)
@@ -77,9 +78,15 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
   ${CUDA_samples_INCLUDE_DIRS}
 )
 
-if(USE_SYSTEM_MALLOC)
-  target_compile_definitions(${PROJECT_NAME} PUBLIC
-  $<$<BOOL:${USE_SYSTEM_MALLOC}>:HOST_MALLOC_AND_FIRST_TOUCH>
-  )
-endif(USE_SYSTEM_MALLOC)
+
+# Configure first-touch memory allocation mode
+if(FIRST_TOUCH_MODE STREQUAL "GPU")
+  target_compile_definitions(${PROJECT_NAME} PUBLIC HOST_MALLOC_AND_FIRST_TOUCH_GPU)
+  message(STATUS "Using host malloc with GPU first-touch")
+elseif(FIRST_TOUCH_MODE STREQUAL "CPU")
+  target_compile_definitions(${PROJECT_NAME} PUBLIC HOST_MALLOC_AND_FIRST_TOUCH_CPU)
+  message(STATUS "Using host malloc with CPU first-touch")
+else()
+  message(STATUS "Using standard cudaMalloc")
+endif()
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES ${NVIDIA_GPU_HARD})
