@@ -23,8 +23,9 @@ constexpr auto round_up(const size_t org, const size_t unit) {
 }
 
 #if defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU)
-// GPU first touch: pages allocated in GPU-local memory
+// GPU first touch: pages backed by the HBM GPU memory
 __global__ void first_touch_gpu(type::pos *const pos, type::vel_xy *const vel_xy, type::vel_z *const vel_z, type::idx *const idx, const type::idx num) {
+  cout << "GPU first touch" << endl;
   const auto i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < num) {
     pos[i] = type::pos{0.0F, 0.0F, 0.0F, 0.0F};
@@ -32,11 +33,12 @@ __global__ void first_touch_gpu(type::pos *const pos, type::vel_xy *const vel_xy
     vel_z[i] = type::vel_z{0.0F};
     idx[i] = std::numeric_limits<type::idx>::min();
   }
+  cout << "GPU first touch done" << endl;
 }
 #endif  // defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU)
 
 #if defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-// CPU first touch: pages allocated in CPU-local memory
+// CPU first touch: pages backed by the CPU memory
 void first_touch_cpu(type::pos *const pos, type::vel_xy *const vel_xy, type::vel_z *const vel_z, type::idx *const idx, const type::idx num) {
   for (type::idx i = 0; i < num; i++) {
     pos[i] = type::pos{0.0F, 0.0F, 0.0F, 0.0F};
@@ -72,11 +74,15 @@ void allocate_particles(type::pos **pos, type::vel_xy **vel_xy, type::vel_z **ve
 
 #if defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU)
   // GPU first touch: trigger page allocation on GPU
+  std::cout << "GPU First touch kernel running" << std::endl;
   first_touch_gpu<<<(size + NTHREADS - 1) / NTHREADS, NTHREADS>>>(*pos, *vel_xy, *vel_z, *idx, size);
   checkCudaErrors(cudaDeviceSynchronize());
+  std::cout << "GPU First touch kernel done" << std::endl;
 #elif defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
   // CPU first touch: trigger page allocation on CPU
+  std::cout << "CPU First touch kernel running" << std::endl;
   first_touch_cpu(*pos, *vel_xy, *vel_z, *idx, size);
+  std::cout << "CPU First touch kernel done" << std::endl;
 #endif
 #endif
 }

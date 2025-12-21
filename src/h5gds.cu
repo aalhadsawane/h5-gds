@@ -129,18 +129,16 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   allocate_particles(&pos, &vel_xy, &vel_z, &idx, num);
 
   // Allocate host buffers for sec2/direct VFDs when using cudaMalloc
-  // (these VFDs require CPU-accessible memory)
   type::idx *idx_host = nullptr;
   type::pos *pos_host = nullptr;
   type::vel_xy *vel_xy_host = nullptr;
   type::vel_z *vel_z_host = nullptr;
-  
+
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
   // Only allocate host buffers if using sec2 or direct VFD with cudaMalloc
   if (vfd_name == "sec2" || vfd_name == "direct") {
     auto size = round_up(num, NTHREADS);
     size = round_up(size, THREAD_NUM);
-    
     idx_host = (type::idx *)malloc(size * sizeof(type::idx));
     pos_host = (type::pos *)malloc(size * sizeof(type::pos));
     vel_xy_host = (type::vel_xy *)malloc(size * sizeof(type::vel_xy));
@@ -153,7 +151,6 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   }
 #endif
 
-  // initialize data on GPU
   set_uniform_sphere(num, pos, vel_xy, vel_z, idx, mass, radius, virial, newton);
 
   constexpr auto benchmark = [](const auto func) noexcept(false) {
@@ -185,10 +182,13 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   // prepare file access property list based on selected VFD
   auto fapl = H5Pcreate(H5P_FILE_ACCESS);
   if (vfd_name == "gds") {
+    std::cout << "using HDF5 gds fapl" << std::endl;
     H5Pset_fapl_gds(fapl, memb, fblk, cbuf);
   } else if (vfd_name == "direct") {
+    std::cout << "using HDF5 direct fapl" << std::endl;
     H5Pset_fapl_direct(fapl, memb, fblk, cbuf);
   } else {  // sec2
+    std::cout << "using HDF5 sec2 fapl" << std::endl;
     H5Pset_fapl_sec2(fapl);
   }
 
