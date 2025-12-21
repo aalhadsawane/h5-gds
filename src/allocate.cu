@@ -11,6 +11,7 @@
 #include <curand_mtgp32.h>  // defines THREAD_NUM
 #include <helper_cuda.h>    // use checkCudaErrors()
 
+#include <iostream>     // std::cout, std::endl
 #include <limits>       // std::numeric_limits
 #include <type_traits>  // std::remove_reference_t
 
@@ -25,7 +26,6 @@ constexpr auto round_up(const size_t org, const size_t unit) {
 #if defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU)
 // GPU first touch: pages backed by the HBM GPU memory
 __global__ void first_touch_gpu(type::pos *const pos, type::vel_xy *const vel_xy, type::vel_z *const vel_z, type::idx *const idx, const type::idx num) {
-  cout << "GPU first touch" << endl;
   const auto i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < num) {
     pos[i] = type::pos{0.0F, 0.0F, 0.0F, 0.0F};
@@ -33,7 +33,6 @@ __global__ void first_touch_gpu(type::pos *const pos, type::vel_xy *const vel_xy
     vel_z[i] = type::vel_z{0.0F};
     idx[i] = std::numeric_limits<type::idx>::min();
   }
-  cout << "GPU first touch done" << endl;
 }
 #endif  // defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU)
 
