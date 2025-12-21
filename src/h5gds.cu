@@ -25,10 +25,19 @@
 #include <sstream>                         // std::stringstream
 #include <string>                          // std::string
 
+#include <helper_cuda.h>    // checkCudaErrors
+#include <curand_mtgp32.h>  // THREAD_NUM
+
 #include "allocate.cuh"
 #include "common.cuh"
 #include "generate.cuh"
 #include "hdf5.hpp"
+
+// Utility function for rounding up to nearest multiple
+constexpr auto round_up(const size_t org, const size_t unit) {
+  const size_t mod = org % unit;
+  return ((mod == 0) ? org : (org + unit - mod));
+}
 
 static constexpr type::vel_z newton = 1.0F;  // gravitational constant in the computational unit
 
