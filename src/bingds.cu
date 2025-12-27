@@ -295,7 +295,6 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       // ===== Direct I/O Read =====
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
       // For device memory, need aligned buffer
-      size_t aligned_size = align_size(total_size, ALIGNMENT);
       void* aligned_buffer_read = nullptr;
       if (posix_memalign(&aligned_buffer_read, ALIGNMENT, aligned_size) != 0) {
         std::cerr << "Failed to allocate aligned buffer" << std::endl;
