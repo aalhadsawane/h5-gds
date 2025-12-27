@@ -113,19 +113,19 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   cudaSetDevice(0);
   
   // Print memory allocation strategy
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
   std::cout << "Memory allocation strategy: DEVICE MEMORY (cudaMalloc)" << std::endl;
   type::idx *idx = nullptr;        // particle ID
   type::pos *pos = nullptr;        // position (x, y, z) and mass (w)
   type::vel_xy *vel_xy = nullptr;  // velocity (x, y)
   type::vel_z *vel_z = nullptr;    // velocity (z)
-#else                              //! defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#else
   std::cout << "Memory allocation strategy: UNIFIED MEMORY (HOST_MALLOC_AND_FIRST_TOUCH)" << std::endl;
   type::idx *idx;        // particle ID
   type::pos *pos;        // position (x, y, z) and mass (w)
   type::vel_xy *vel_xy;  // velocity (x, y)
   type::vel_z *vel_z;  // velocity (z)
-#endif                             //! defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#endif
   allocate_particles(&pos, &vel_xy, &vel_z, &idx, num);
 
   // initialize data on GPU
@@ -248,7 +248,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       close(fd_read);
     } else if (method == "direct") {
       // ===== Direct I/O Write =====
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
       // For device memory, need aligned buffer
       size_t aligned_size = align_size(total_size, ALIGNMENT);
       void* aligned_buffer_write = nullptr;
@@ -262,7 +262,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       int fd_write = open(name.c_str(), O_CREAT | O_WRONLY | O_DIRECT, 0644);
       if (fd_write < 0) {
         std::cerr << "Failed to open file for Direct I/O write" << std::endl;
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
         free(aligned_buffer_write);
 #endif
         std::exit(EXIT_FAILURE);
@@ -270,7 +270,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
       // Benchmark: data copy + write (this is the I/O pipeline)
       elapse_write = benchmark([&]() {
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
         char* buf_ptr = (char*)aligned_buffer_write;
         cudaMemcpy(buf_ptr, idx, idx_size, cudaMemcpyDeviceToHost); buf_ptr += idx_size;
         cudaMemcpy(buf_ptr, pos, pos_size, cudaMemcpyDeviceToHost); buf_ptr += pos_size;
@@ -278,7 +278,6 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
         cudaMemcpy(buf_ptr, vel_z, vel_z_size, cudaMemcpyDeviceToHost);
         write(fd_write, aligned_buffer_write, aligned_size);
 #else
-        // For unified memory, write directly (memory is already aligned for GH200)
         write(fd_write, idx, idx_size);
         write(fd_write, pos, pos_size);
         write(fd_write, vel_xy, vel_xy_size);
@@ -288,13 +287,13 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
       // Close and cleanup (NOT timed)
       close(fd_write);
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
       free(aligned_buffer_write);
 #endif
 
 
       // ===== Direct I/O Read =====
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
       // For device memory, need aligned buffer
       size_t aligned_size = align_size(total_size, ALIGNMENT);
       void* aligned_buffer_read = nullptr;
@@ -308,7 +307,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       int fd_read = open(name.c_str(), O_RDONLY | O_DIRECT);
       if (fd_read < 0) {
         std::cerr << "Failed to open file for Direct I/O read" << std::endl;
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
         free(aligned_buffer_read);
 #endif
         std::exit(EXIT_FAILURE);
@@ -316,7 +315,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
       // Benchmark: read + data copy (this is the I/O pipeline)
       elapse_read = benchmark([&]() {
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
         read(fd_read, aligned_buffer_read, aligned_size);
         
         char* buf_ptr = (char*)aligned_buffer_read;
@@ -335,12 +334,12 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
       // Close file (NOT timed)
       close(fd_read);
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
       free(aligned_buffer_read);
 #endif
     } else if (method == "posix") {
       // ===== Standard POSIX Write =====
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
       // For device memory, need intermediate buffer
       void* host_buffer_write = malloc(total_size);
       if (!host_buffer_write) {
@@ -353,7 +352,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       int fd_write = open(name.c_str(), O_CREAT | O_WRONLY, 0644);
       if (fd_write < 0) {
         std::cerr << "Failed to open file for POSIX write" << std::endl;
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
         free(host_buffer_write);
 #endif
         std::exit(EXIT_FAILURE);
@@ -361,7 +360,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
       // Benchmark: data copy + write (this is the I/O pipeline)
       elapse_write = benchmark([&]() {
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
         char* buf_ptr = (char*)host_buffer_write;
         cudaMemcpy(buf_ptr, idx, idx_size, cudaMemcpyDeviceToHost); buf_ptr += idx_size;
         cudaMemcpy(buf_ptr, pos, pos_size, cudaMemcpyDeviceToHost); buf_ptr += pos_size;
@@ -378,13 +377,13 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       });
 
       close(fd_write);
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
       free(host_buffer_write);
 #endif
 
 
       // ===== Standard POSIX Read =====
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
       // For device memory, need intermediate buffer
       void* host_buffer_read = malloc(total_size);
       if (!host_buffer_read) {
@@ -397,14 +396,14 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       int fd_read = open(name.c_str(), O_RDONLY);
       if (fd_read < 0) {
         std::cerr << "Failed to open file for POSIX read" << std::endl;
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
         free(host_buffer_read);
 #endif
         std::exit(EXIT_FAILURE);
       }
 
       elapse_read = benchmark([&]() {
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
         read(fd_read, host_buffer_read, total_size);
         char* buf_ptr = (char*)host_buffer_read;
         cudaMemcpy(idx_read, buf_ptr, idx_size, cudaMemcpyHostToDevice); buf_ptr += idx_size;
@@ -422,7 +421,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
       // Close file (NOT timed)
       close(fd_read);
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
+#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
       free(host_buffer_read);
 #endif
     }
