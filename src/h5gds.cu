@@ -144,6 +144,9 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   auto fapl = H5Pcreate(H5P_FILE_ACCESS);
   H5Pset_fapl_gds(fapl, memb, fblk, cbuf);
 
+  // Ensure file offsets are aligned with the block size for GDS performance
+H5Pset_alignment(fapl, 0, fblk);
+
   // create HDF5 file
   auto uuid = boost::uuids::random_generator{}();
   const auto series = boost::lexical_cast<std::string>(uuid);
