@@ -33,6 +33,15 @@ ls dat_rank0/*.h5
 ls dat_rank1/*.h5
 ```
 
+### Multi-Rank per Node Verification (Miyabi 72-core logic)
+
+To verify that multiple ranks on the same node correctly share the GPU and assign local ranks:
+
+```sh
+mpirun -np 4 ./build/bin/h5gds --num 1024
+```
+Expected output should show all ranks assigned to Node 0, but with different Local Ranks (0, 1, 2, 3) all using GPU 0.
+
 ## 4. Source File Loading Verification
 
 1.  Generate a file first.

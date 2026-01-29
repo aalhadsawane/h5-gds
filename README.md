@@ -98,6 +98,15 @@
 
 This tool is extended to support performance comparisons between local and remote storage on Miyabi (GraceHopper architecture).
 
+### Architecture Assumption
+
+The tool is configured with a hardcoded assumption of **72 cores per node** (`MIYABI_CORES_PER_NODE`), matching the Miyabi system architecture. This is used to calculate:
+*   **Node ID**: `mpi_rank / 72`
+*   **Local Rank**: `mpi_rank % 72`
+*   **GPU ID**: `local_rank % device_count` (since Miyabi has 1 GPU per node, this is typically 0).
+
+If you run with more than 72 processes per node, or on a system with a different core count, you should adjust `MIYABI_CORES_PER_NODE` in `src/h5gds.cu`.
+
 ### Example: Local XFS SSD vs Remote NFS-RDMA
 
 To compare a local SSD (Rank 0) with a remote SSD mounted via NFS-RDMA (Rank 1):

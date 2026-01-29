@@ -27,6 +27,8 @@
 #include <string>                          // std::string
 #include <vector>                          // std::vector
 
+#define MIYABI_CORES_PER_NODE 72
+
 #include "allocate.cuh"
 #include "common.cuh"
 #include "generate.cuh"
@@ -61,6 +63,9 @@ auto main(int argc, char **argv) -> int32_t {
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
+  const int node_id = mpi_rank / MIYABI_CORES_PER_NODE;
+  const int local_rank = mpi_rank % MIYABI_CORES_PER_NODE;
+
   // initialize the simulation
   // prepare options
   boost::program_options::options_description opt("List of options");
@@ -76,7 +81,7 @@ auto main(int argc, char **argv) -> int32_t {
       "mass", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(1.0), "total mass of the system")(
       "xdmf", boost::program_options::bool_switch()->default_value(false), "generate XDMF file to visualize the snapshot")(
       "output-path", boost::program_options::value<std::vector<std::string>>()->default_value({"dat"}, "dat")->composing(), "output path(s)")(
-      "input-path", boost::program_options::value<std::string>(), "input path for read test")(
+      "input-path", boost::program_options::value<std::vector<std::string>>()->composing(), "input path(s) for read test")(
       "source-file", boost::program_options::value<std::vector<std::string>>()->composing(), "source HDF5 file(s) to load data from")(
       "help,h", "Help");
   // read input arguments
@@ -102,7 +107,7 @@ auto main(int argc, char **argv) -> int32_t {
   const auto asis = vm["asis"].as<bool>();
   const auto write_xdmf = vm["xdmf"].as<bool>();
   const auto output_paths = vm["output-path"].as<std::vector<std::string>>();
-  const std::string input_path = vm.count("input-path") ? vm["input-path"].as<std::string>() : "";
+  const auto input_paths = vm.count("input-path") ? vm["input-path"].as<std::vector<std::string>>() : std::vector<std::string>();
   const auto source_files = vm.count("source-file") ? vm["source-file"].as<std::vector<std::string>>() : std::vector<std::string>();
   vm.clear();
 
@@ -132,7 +137,13 @@ auto main(int argc, char **argv) -> int32_t {
   // memory allocation
   int device_count;
   cudaGetDeviceCount(&device_count);
-  cudaSetDevice(mpi_rank % device_count);
+  cudaSetDevice(local_rank % device_count);
+
+  if (mpi_rank == 0) {
+    std::cout << "Miyabi Cluster Configuration: " << MIYABI_CORES_PER_NODE << " cores/node" << std::endl;
+  }
+  std::cout << "Rank " << mpi_rank << " assigned to Node " << node_id << ", Local Rank " << local_rank << ", GPU " << (local_rank % device_count) << std::endl;
+
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
   type::idx *idx = nullptr;        // particle ID
   type::pos *pos = nullptr;        // position (x, y, z) and mass (w)
@@ -305,7 +316,7 @@ auto main(int argc, char **argv) -> int32_t {
   }
 
   // read the file and compare
-  const std::string read_name = input_path.empty() ? name : input_path;
+  const std::string read_name = input_paths.empty() ? name : input_paths[static_cast<size_t>(mpi_rank) % input_paths.size()];
   target = H5Fopen(read_name.c_str(), H5F_ACC_RDONLY, fapl);
   auto num_read = std::remove_const_t<decltype(num)>{};
   util::hdf5::read_attr(target, "num", &num_read);
