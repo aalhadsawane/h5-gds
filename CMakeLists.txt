@@ -54,7 +54,11 @@ file(COPY disable_compat.json DESTINATION ${CMAKE_BINARY_DIR})
 file(COPY force_compat.json DESTINATION ${CMAKE_BINARY_DIR})
 
 # preparation for finding library path
-string(REPLACE ":" ";" SEARCH_PATH $ENV{CPATH})
+if(DEFINED ENV{CPATH})
+  string(REPLACE ":" ";" SEARCH_PATH $ENV{CPATH})
+else()
+  set(SEARCH_PATH "")
+endif()
 
 # compile benchmark code: GPUDirect Storage via HDF5
 project(h5gds CXX CUDA)
@@ -69,6 +73,7 @@ add_executable(${PROJECT_NAME}
 
 find_package(CUDA REQUIRED)
 find_package(CUDA_samples REQUIRED)
+find_package(MPI REQUIRED)
 
 # apply common settings
 include(${USER_MODULE_PATH}/apply_common_settings.cmake)

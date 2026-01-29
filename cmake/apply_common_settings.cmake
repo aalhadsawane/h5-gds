@@ -36,6 +36,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   ${Boost_LIBRARIES}
   ${HDF5_LIBRARIES}
   ${HDF5VFD_GDS_LIBRARIES}
+  MPI::MPI_CXX
 
   # OpenMP
   $<$<AND:$<BOOL:${OpenMP_FOUND}>,$<NOT:$<CXX_COMPILER_ID:NVHPC>>>:${OpenMP_CXX_FLAGS}>
@@ -61,4 +62,5 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
 # add definitions
 target_compile_definitions(${PROJECT_NAME} PUBLIC
   $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
+  USE_MPI
 )
