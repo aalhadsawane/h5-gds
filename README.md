@@ -19,6 +19,7 @@
     * set path of directly contains `H5FDgds.h` as `CPATH`, `VFD_GDS_DIR`, or `VFD_GDS_INC` for CMake
     * set path of directly contains `libhdf5_vfd_gds.so` as `LD_LIBRARY_PATH`, `VFD_GDS_DIR`, or `VFD_GDS_LIB` for CMake
     * otherwise, edit `cmake/modules/FindHDF5VFD_GDS.cmake` properly
+  * [MPI](https://www.mpi-forum.org/) (for multi-node benchmarks)
 * Configuration using CUI
 
   ```sh
@@ -44,22 +45,28 @@
 
 ## How to run
 
-* Execution
+* Execution (Single Process)
 
   ```sh
   bin/h5gds [option]
   ```
 
+* Execution (Multi Process / Multi Node)
+
+  ```sh
+  mpirun -np 2 -N 1 bin/h5gds [option]
+  ```
+
   * Execution in native mode (force to use GDS)
 
     ```sh
-    CUFILE_JSON=./disable_compat.json bin/h5gds [option]
+    CUFILE_JSON=./disable_compat.json mpirun -np 2 -N 1 bin/h5gds [option]
     ```
 
   * Execution in compatible mode (read/write via host CPU)
 
     ```sh
-    CUFILE_JSON=./force_compat.json bin/h5gds [option]
+    CUFILE_JSON=./force_compat.json mpirun -np 2 -N 1 bin/h5gds [option]
     ```
 
 * List of execution options
@@ -83,6 +90,36 @@
     | `--radius VALUE` | set VALUE as the initial radius of the system |
     | `--mass VALUE` | set VALUE as the total mass of the system |
     | `--xdmf` | generate XDMF file to visualize the snapshot (only effective under hyperslab mode) |
+    | `--output-path PATH` | set PATH as directory to write benchmark files (default: `dat`). Can be specified multiple times for different ranks. |
+    | `--input-path PATH` | set PATH as the file to read during read benchmark. If omitted, the file written in the write phase is used. |
+    | `--source-file FILE` | load initial GPU data from FILE instead of generating it. Can be specified multiple times for different ranks. |
+
+## Multi-node Benchmarking on Miyabi Supercomputer
+
+This tool is extended to support performance comparisons between local and remote storage on Miyabi (GraceHopper architecture).
+
+### Example: Local XFS SSD vs Remote NFS-RDMA
+
+To compare a local SSD (Rank 0) with a remote SSD mounted via NFS-RDMA (Rank 1):
+
+```sh
+mpirun -np 2 -N 1 bin/h5gds --output-path /local/xfs --output-path /mnt/remote_xfs --num 1048576
+```
+
+### Aggregated Results
+
+Rank 0 will report aggregated results including:
+*   Total data size across all ranks.
+*   Maximum write/read latency.
+*   Aggregated bandwidth (Total Size / Max Latency).
+
+Detailed per-rank results are appended to `log/h5gds_benchmark.csv`.
+
+## Output Files
+
+*   **HDF5 Data**: `<output-path>/<uuid>_rank<rank>.h5`
+*   **XDMF (optional)**: `<output-path>/<uuid>_rank<rank>.xdmf`
+*   **Benchmark Log**: `log/h5gds_benchmark.csv`
 
 ## Data types
 

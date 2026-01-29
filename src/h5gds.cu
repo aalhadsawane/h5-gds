@@ -76,6 +76,7 @@ auto main(int argc, char **argv) -> int32_t {
       "xdmf", boost::program_options::bool_switch()->default_value(false), "generate XDMF file to visualize the snapshot")(
       "output-path", boost::program_options::value<std::vector<std::string>>()->default_value({"dat"}, "dat")->composing(), "output path(s)")(
       "input-path", boost::program_options::value<std::string>(), "input path for read test")(
+      "source-file", boost::program_options::value<std::vector<std::string>>()->composing(), "source HDF5 file(s) to load data from")(
       "help,h", "Help");
   // read input arguments
   boost::program_options::variables_map vm;
@@ -89,7 +90,7 @@ auto main(int argc, char **argv) -> int32_t {
     std::exit(EXIT_SUCCESS);
   }
   // configure the benchmark
-  const auto num = vm["num"].as<type::idx>();
+  type::idx num = vm["num"].as<type::idx>();
   const auto cbuf = vm["cbuf"].as<size_t>();
   const auto fblk = vm["fblk"].as<size_t>();
   const auto memb = vm["memb"].as<size_t>();
@@ -101,7 +102,21 @@ auto main(int argc, char **argv) -> int32_t {
   const auto write_xdmf = vm["xdmf"].as<bool>();
   const auto output_paths = vm["output-path"].as<std::vector<std::string>>();
   const std::string input_path = vm.count("input-path") ? vm["input-path"].as<std::string>() : "";
+  const auto source_files = vm.count("source-file") ? vm["source-file"].as<std::vector<std::string>>() : std::vector<std::string>();
   vm.clear();
+
+  if (!source_files.empty()) {
+    const std::string source_file = source_files[static_cast<size_t>(mpi_rank) % source_files.size()];
+    auto target_src = H5Fopen(source_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (target_src >= 0) {
+      util::hdf5::read_attr(target_src, "num", &num);
+      H5Fclose(target_src);
+    } else {
+      if (mpi_rank == 0) std::cerr << "ERROR: could not open source file " << source_file << std::endl;
+      MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+      std::exit(EXIT_FAILURE);
+    }
+  }
   // copy buffer size must be a multiple of block size
   if ((cbuf % fblk) != 0U) {
     if (mpi_rank == 0) {
@@ -131,7 +146,49 @@ auto main(int argc, char **argv) -> int32_t {
   allocate_particles(&pos, &vel_xy, &vel_z, &idx, num);
 
   // initialize data on GPU
-  set_uniform_sphere(num, pos, vel_xy, vel_z, idx, mass, radius, virial, newton);
+  if (source_files.empty()) {
+    if (mpi_rank == 0) std::cout << "Generating data on GPU..." << std::endl;
+    set_uniform_sphere(num, pos, vel_xy, vel_z, idx, mass, radius, virial, newton);
+  } else {
+    const std::string source_file = source_files[static_cast<size_t>(mpi_rank) % source_files.size()];
+    if (mpi_rank == 0) std::cout << "Loading data from " << source_file << "..." << std::endl;
+
+    util::hdf5::create_h5t_real2();
+    util::hdf5::create_h5t_real4();
+    const auto [hdf5_dataspace_Nx3, hdf5_dataspace_Nx2, hdf5_dataspace_Nx1, hdf5_dataspace_Nx2_3, hdf5_dataspace_Nx1_3, hdf5_dataspace_Nx4, hdf5_dataspace_Nx3_4, hdf5_dataspace_Nx1_4] = util::hdf5::prepare_hyperslab_Nx3(num);
+
+    auto h5load = util::hdf5::h5multi_read{};
+    h5load.allocate(5);
+    auto target_src = H5Fopen(source_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+
+    h5load.commit(target_src, "id", util::hdf5::h5type(*idx), idx);
+    const auto FPtype = util::hdf5::h5type(*vel_z);
+    if (!asis) {
+      h5load.commit(target_src, "velocity", FPtype, vel_xy, hdf5_dataspace_Nx2, hdf5_dataspace_Nx2_3);
+      h5load.commit(vel_z, h5load.get_last_dataset(), FPtype, hdf5_dataspace_Nx1, hdf5_dataspace_Nx1_3);
+      h5load.commit(target_src, "position", FPtype, pos, hdf5_dataspace_Nx3_4, hdf5_dataspace_Nx3);
+      h5load.commit(target_src, "mass", FPtype, pos, hdf5_dataspace_Nx1_4, hdf5_dataspace_Nx1);
+    } else {
+      h5load.commit(target_src, "pos", util::hdf5::h5type(*pos), pos);
+      h5load.commit(target_src, "vel_xy", util::hdf5::h5type(*vel_xy), vel_xy);
+      h5load.commit(target_src, "vel_z", util::hdf5::h5type(*vel_z), vel_z);
+    }
+    h5load.execute();
+    H5Fclose(target_src);
+
+    util::hdf5::close_dataspace(hdf5_dataspace_Nx1_3);
+    util::hdf5::close_dataspace(hdf5_dataspace_Nx2_3);
+    util::hdf5::close_dataspace(hdf5_dataspace_Nx1);
+    util::hdf5::close_dataspace(hdf5_dataspace_Nx2);
+    util::hdf5::close_dataspace(hdf5_dataspace_Nx3);
+    util::hdf5::close_dataspace(hdf5_dataspace_Nx1_4);
+    util::hdf5::close_dataspace(hdf5_dataspace_Nx3_4);
+    util::hdf5::close_dataspace(hdf5_dataspace_Nx4);
+    util::hdf5::remove_h5t_real2();
+    util::hdf5::remove_h5t_real4();
+  }
+
+  if (mpi_rank == 0) std::cout << "Setup complete. Starting benchmarks..." << std::endl;
 
   constexpr auto benchmark = [](const auto func) noexcept(false) {
     // cudaDeviceSynchronize();
