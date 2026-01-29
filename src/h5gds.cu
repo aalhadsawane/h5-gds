@@ -9,6 +9,7 @@
 ///
 #include <H5FDgds.h>  // VFD for GDS
 #include <hdf5.h>
+#include <mpi.h>
 #include <thrust/device_ptr.h>
 #include <thrust/equal.h>
 #include <thrust/execution_policy.h>
@@ -49,9 +50,15 @@ struct compare_vel_xy {
 /// @param[in] argc number of input argument(s)
 /// @param[in] argv input argument(s)
 ///
-auto main(const int32_t argc, const char *const *const argv) -> int32_t {
+auto main(int argc, char **argv) -> int32_t {
   // use scientific notation for floating-point number
   std::cout << std::scientific;
+
+  MPI_Init(&argc, &argv);
+  int mpi_rank;
+  int mpi_size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
   // initialize the simulation
   // prepare options
@@ -67,13 +74,18 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       "radius", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(1.0), "radius of the system")(
       "mass", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(1.0), "total mass of the system")(
       "xdmf", boost::program_options::bool_switch()->default_value(false), "generate XDMF file to visualize the snapshot")(
+      "output-path", boost::program_options::value<std::vector<std::string>>()->default_value({"dat"}, "dat")->composing(), "output path(s)")(
+      "input-path", boost::program_options::value<std::string>(), "input path for read test")(
       "help,h", "Help");
   // read input arguments
   boost::program_options::variables_map vm;
   boost::program_options::store(boost::program_options::parse_command_line(argc, argv, opt), vm);
   boost::program_options::notify(vm);
   if (vm.count("help") == 1UL) {
-    std::cout << opt << std::endl;
+    if (mpi_rank == 0) {
+      std::cout << opt << std::endl;
+    }
+    MPI_Finalize();
     std::exit(EXIT_SUCCESS);
   }
   // configure the benchmark
@@ -87,17 +99,24 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   const auto skip = vm["skip"].as<bool>();
   const auto asis = vm["asis"].as<bool>();
   const auto write_xdmf = vm["xdmf"].as<bool>();
+  const auto output_paths = vm["output-path"].as<std::vector<std::string>>();
+  const std::string input_path = vm.count("input-path") ? vm["input-path"].as<std::string>() : "";
   vm.clear();
   // copy buffer size must be a multiple of block size
   if ((cbuf % fblk) != 0U) {
-    std::cerr << "copy buffer size (" << cbuf << ") must be a multiple of block size (" << fblk << ")";
-    std::cerr << std::endl;
-    std::cerr << std::fflush;
+    if (mpi_rank == 0) {
+      std::cerr << "copy buffer size (" << cbuf << ") must be a multiple of block size (" << fblk << ")";
+      std::cerr << std::endl;
+      std::cerr << std::fflush;
+    }
+    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     std::exit(EXIT_FAILURE);
   }
 
   // memory allocation
-  cudaSetDevice(0);
+  int device_count;
+  cudaGetDeviceCount(&device_count);
+  cudaSetDevice(mpi_rank % device_count);
 #if !defined(HOST_MALLOC_AND_FIRST_TOUCH)
   type::idx *idx = nullptr;        // particle ID
   type::pos *pos = nullptr;        // position (x, y, z) and mass (w)
@@ -145,9 +164,15 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   H5Pset_fapl_gds(fapl, memb, fblk, cbuf);
 
   // create HDF5 file
-  auto uuid = boost::uuids::random_generator{}();
+  boost::uuids::uuid uuid;
+  if (mpi_rank == 0) {
+    uuid = boost::uuids::random_generator{}();
+  }
+  MPI_Bcast(&uuid, sizeof(uuid), MPI_BYTE, 0, MPI_COMM_WORLD);
+
   const auto series = boost::lexical_cast<std::string>(uuid);
-  auto name = "dat/" + series + ".h5";
+  const std::string output_path = output_paths[static_cast<size_t>(mpi_rank) % output_paths.size()];
+  auto name = output_path + "/" + series + "_rank" + std::to_string(mpi_rank) + ".h5";
   auto target = H5Fcreate(name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
   // preparation for H5Dwrite_multi()
   h5write.commit(hdf5_dataspace_N, target, "id", util::hdf5::h5type(*idx), idx);
@@ -164,6 +189,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   }
   // execute H5Dwrite_multi()
   // h5write.execute();
+  MPI_Barrier(MPI_COMM_WORLD);
   const auto elapse_write = benchmark([&h5write]() { h5write.execute(); });
   // write attribute
   util::hdf5::write_attr(hdf5_dataspace_1, target, "num", &num);
@@ -220,12 +246,14 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   }
 
   // read the file and compare
-  target = H5Fopen(name.c_str(), H5F_ACC_RDONLY, fapl);
+  const std::string read_name = input_path.empty() ? name : input_path;
+  target = H5Fopen(read_name.c_str(), H5F_ACC_RDONLY, fapl);
   auto num_read = std::remove_const_t<decltype(num)>{};
   util::hdf5::read_attr(target, "num", &num_read);
   if (num_read != num) {
-    std::cerr << __FILE__ << "(" << __LINE__ << "): " << __func__ << ": ERROR: num_read (" << num_read << ") does not match with num (" << num << ")" << std::endl
+    std::cerr << "rank " << mpi_rank << ": " << __FILE__ << "(" << __LINE__ << "): " << __func__ << ": ERROR: num_read (" << num_read << ") does not match with num (" << num << ")" << std::endl
               << std::flush;
+    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     std::exit(EXIT_FAILURE);
   }
   std::remove_reference_t<decltype(*idx)> *idx_read = nullptr;        // particle ID
@@ -248,6 +276,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   }
   // execute H5Dread_multi()
   // h5read.execute();
+  MPI_Barrier(MPI_COMM_WORLD);
   const auto elapse_read = benchmark([&h5read]() { h5read.execute(); });
 
   // close the file
@@ -308,14 +337,32 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
     output << "," << name;
     output << std::endl;
     output.close();
+
+    // Aggregate results on rank 0
+    double max_elapse_write, max_elapse_read;
+    MPI_Reduce(&elapse_write, &max_elapse_write, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&elapse_read, &max_elapse_read, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    double total_datasize;
+    MPI_Reduce(&datasize, &total_datasize, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    if (mpi_rank == 0) {
+      std::cout << "--- Aggregated Results (" << mpi_size << " ranks) ---" << std::endl;
+      std::cout << "Total Data Size:  " << total_datasize << " bytes" << std::endl;
+      std::cout << "Max Write Latency: " << max_elapse_write << " s" << std::endl;
+      std::cout << "Max Read Latency:  " << max_elapse_read << " s" << std::endl;
+      std::cout << "Aggregated Write Bandwidth: " << total_datasize / max_elapse_write << " bytes/s" << std::endl;
+      std::cout << "Aggregated Read Bandwidth:  " << total_datasize / max_elapse_read << " bytes/s" << std::endl;
+    }
   } else {
-    std::cerr << __FILE__ << "(" << __LINE__ << "): " << __func__ << ": ERROR: read data does not match with the original data" << std::endl
+    std::cerr << "rank " << mpi_rank << ": " << __FILE__ << "(" << __LINE__ << "): " << __func__ << ": ERROR: read data does not match with the original data" << std::endl
               << std::flush;
+    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     std::exit(EXIT_FAILURE);
   }
 
   release_particles(pos, vel_xy, vel_z, idx);
   release_particles(pos_read, vel_xy_read, vel_z_read, idx_read);
 
+  MPI_Finalize();
   std::exit(EXIT_SUCCESS);
 }
