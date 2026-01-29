@@ -25,6 +25,7 @@
 #include <iostream>                        // std::cout
 #include <sstream>                         // std::stringstream
 #include <string>                          // std::string
+#include <vector>                          // std::vector
 
 #include "allocate.cuh"
 #include "common.cuh"
@@ -255,7 +256,8 @@ auto main(int argc, char **argv) -> int32_t {
 
   // generate XDMF file if requested
   if (!asis && write_xdmf) {
-    std::ofstream xml("dat/" + series + ".xdmf", std::ios::out);
+    auto xdmf_name = output_path + "/" + series + "_rank" + std::to_string(mpi_rank) + ".xdmf";
+    std::ofstream xml(xdmf_name, std::ios::out);
 
     xml << R"(<?xml version="1.0" ?>)" << std::endl;
     xml << R"(<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>)" << std::endl;
@@ -266,7 +268,7 @@ auto main(int argc, char **argv) -> int32_t {
 
     xml << R"(      <Geometry GeometryType="XYZ">)" << std::endl;
     xml << R"(        <DataItem Dimensions=")" << num << R"( 3" NumberType="Float" Precision=")" << sizeof(decltype(*vel_z)) << R"(" Format="HDF">)" << std::endl;
-    xml << "          " << series + ".h5"
+    xml << "          " << series + "_rank" + std::to_string(mpi_rank) + ".h5"
         << ":/"
         << "position" << std::endl;
     xml << "        </DataItem>" << std::endl;
@@ -274,7 +276,7 @@ auto main(int argc, char **argv) -> int32_t {
 
     xml << R"(      <Attribute Name="velocity" AttributeType="Vector" Center="Node">)" << std::endl;
     xml << R"(        <DataItem Dimensions=")" << num << R"( 3" NumberType="Float" Precision=")" << sizeof(decltype(*vel_z)) << R"(" Format="HDF">)" << std::endl;
-    xml << "          " << series + ".h5"
+    xml << "          " << series + "_rank" + std::to_string(mpi_rank) + ".h5"
         << ":/"
         << "velocity" << std::endl;
     xml << "        </DataItem>" << std::endl;
@@ -282,7 +284,7 @@ auto main(int argc, char **argv) -> int32_t {
 
     xml << R"(      <Attribute Name="mass" AttributeType="Scalar" Center="Node">)" << std::endl;
     xml << R"(        <DataItem Dimensions=")" << num << R"(" NumberType="Float" Precision=")" << sizeof(decltype(*vel_z)) << R"(" Format="HDF">)" << std::endl;
-    xml << "          " << series + ".h5"
+    xml << "          " << series + "_rank" + std::to_string(mpi_rank) + ".h5"
         << ":/"
         << "mass" << std::endl;
     xml << "        </DataItem>" << std::endl;
@@ -290,7 +292,7 @@ auto main(int argc, char **argv) -> int32_t {
 
     xml << R"(      <Attribute Name="ID" AttributeType="Scalar" Center="Node">)" << std::endl;
     xml << R"(        <DataItem Dimensions=")" << num << R"(" NumberType="UInt" Precision=")" << sizeof(decltype(*idx)) << R"(" Format="HDF">)" << std::endl;
-    xml << "          " << series + ".h5"
+    xml << "          " << series + "_rank" + std::to_string(mpi_rank) + ".h5"
         << ":/"
         << "id" << std::endl;
     xml << "        </DataItem>" << std::endl;
@@ -359,29 +361,20 @@ auto main(int argc, char **argv) -> int32_t {
   if (success) {
     // output the benchmark result
     const std::string report = "log/h5gds_benchmark.csv";
-    const boost::filesystem::path previous(report);
-    boost::system::error_code err;
-    const auto exist = boost::filesystem::exists(previous, err);
-
-    // write header if report is a new file
-    std::ofstream output(report, std::ios::app);
-    if (!exist || err) {
-      output << "N";
-      output << ",data size [byte]";
-      output << ",copy buffer size [byte]";
-      output << ",file block size [byte]";
-      output << ",memory boundary [byte]";
-      output << ",latency (write) [s]";
-      output << ",latency (read) [s]";
-      output << ",bandwidth (write) [byte/s]";
-      output << ",bandwidth (read) [byte/s]";
-      output << ",filename";
-      output << std::endl;
+    if (mpi_rank == 0) {
+      const boost::filesystem::path previous(report);
+      boost::system::error_code err;
+      if (!boost::filesystem::exists(previous, err) || err) {
+        std::ofstream output(report, std::ios::app);
+        output << "rank,N,data size [byte],copy buffer size [byte],file block size [byte],memory boundary [byte],latency (write) [s],latency (read) [s],bandwidth (write) [byte/s],bandwidth (read) [byte/s],filename" << std::endl;
+      }
     }
+    MPI_Barrier(MPI_COMM_WORLD);
 
     // write statistics of the simulation
+    std::ofstream output(report, std::ios::app);
     output << std::scientific;
-    output << num;
+    output << mpi_rank << "," << num;
     const auto datasize = static_cast<double>(num) * static_cast<double>(sizeof(std::remove_reference_t<decltype(*idx)>) + sizeof(std::remove_reference_t<decltype(*pos)>) + sizeof(std::remove_reference_t<decltype(*vel_xy)>) + sizeof(std::remove_reference_t<decltype(*vel_z)>));
     output << "," << datasize;
     output << "," << cbuf;

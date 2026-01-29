@@ -118,8 +118,8 @@ Detailed per-rank results are appended to `log/h5gds_benchmark.csv`.
 ## Output Files
 
 *   **HDF5 Data**: `<output-path>/<uuid>_rank<rank>.h5`
-*   **XDMF (optional)**: `<output-path>/<uuid>_rank<rank>.xdmf`
-*   **Benchmark Log**: `log/h5gds_benchmark.csv`
+*   **XDMF (optional)**: `<output-path>/<uuid>_rank<rank>.xdmf` (points to its corresponding HDF5 file)
+*   **Benchmark Log**: `log/h5gds_benchmark.csv` (includes per-rank statistics)
 
 ## Data types
 

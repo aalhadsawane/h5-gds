@@ -40,11 +40,13 @@ ls dat_rank1/*.h5
 
 ```sh
 # Step 1: Generate source data
+mkdir -p test_src
 mpirun -np 1 ./build/bin/h5gds --num 2048 --output-path ./test_src --asis
-# Identify the generated file (e.g., test_src/xyz_rank0.h5)
+# Identify the generated file (e.g., test_src/uuid_rank0.h5)
 SRC_FILE=$(ls test_src/*_rank0.h5 | head -n 1)
 
 # Step 2: Run benchmark using the source file
+mkdir -p test_out
 mpirun -np 1 ./build/bin/h5gds --source-file $SRC_FILE --output-path ./test_out --asis
 ```
 
