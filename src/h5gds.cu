@@ -63,8 +63,17 @@ auto main(int argc, char **argv) -> int32_t {
   MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
+  // Dynamic topology detection for robust GPU assignment
+  MPI_Comm node_comm;
+  MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, mpi_rank, MPI_INFO_NULL, &node_comm);
+  int local_rank;
+  MPI_Comm_rank(node_comm, &local_rank);
+  MPI_Comm_free(&node_comm);
+
+  // Still calculate node_id using the fixed logic as requested, or use a safer method if preferred.
+  // We keep the logic for consistency with previous behavior, but rely on the true local_rank for device selection.
   const int node_id = mpi_rank / MIYABI_CORES_PER_NODE;
-  const int local_rank = mpi_rank % MIYABI_CORES_PER_NODE;
+  // const int local_rank_legacy = mpi_rank % MIYABI_CORES_PER_NODE;
 
   // initialize the simulation
   // prepare options
@@ -241,6 +250,19 @@ auto main(int argc, char **argv) -> int32_t {
 
   const auto series = boost::lexical_cast<std::string>(uuid);
   const std::string output_path = output_paths[static_cast<size_t>(mpi_rank) % output_paths.size()];
+
+  // Ensure output directory exists
+  boost::filesystem::path dir(output_path);
+  if (!boost::filesystem::exists(dir)) {
+    boost::system::error_code ec;
+    if (!boost::filesystem::create_directories(dir, ec)) {
+       if (mpi_rank == 0) {
+         std::cerr << "ERROR: could not create directory " << output_path << ": " << ec.message() << std::endl;
+       }
+       // Proceeding might fail, but let HDF5 handle the file creation error
+    }
+  }
+
   auto name = output_path + "/" + series + "_rank" + std::to_string(mpi_rank) + ".h5";
   auto target = H5Fcreate(name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
   // preparation for H5Dwrite_multi()
