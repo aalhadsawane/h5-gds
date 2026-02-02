@@ -31,11 +31,25 @@ find_package(HDF5 REQUIRED COMPONENTS C)
 # find VFD for GDS
 find_package(HDF5VFD_GDS REQUIRED COMPONENTS C)
 
+find_library(CUFILE_LIB
+    NAMES cufile libcufile.so
+    PATHS
+    /work/opt/local/aarch64/cores/cuda/12.9.0/targets/sbsa-linux/lib
+    DOC "Path to libcufile"
+)
+
+if(NOT CUFILE_LIB)
+    message(FATAL_ERROR "Could not find libcufile! Please check the path.")
+else()
+    message(STATUS "Found libcufile: ${CUFILE_LIB}")
+endif()
+
 # link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
   ${Boost_LIBRARIES}
   ${HDF5_LIBRARIES}
   ${HDF5VFD_GDS_LIBRARIES}
+  ${CUFILE_LIB}
   MPI::MPI_CXX
 
   # OpenMP

@@ -254,6 +254,9 @@ auto main(int argc, char **argv) -> int32_t {
   // Ensure output directory exists
   boost::filesystem::path dir(output_path);
   if (!boost::filesystem::exists(dir)) {
+    if (mpi_rank == 0) {
+      std::cout << "Directory " << output_path << " does not exist. Creating it..." << std::endl;
+    }
     boost::system::error_code ec;
     if (!boost::filesystem::create_directories(dir, ec)) {
        if (mpi_rank == 0) {
