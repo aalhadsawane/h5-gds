@@ -52,6 +52,7 @@ file(COPY sh DESTINATION ${CMAKE_BINARY_DIR})
 file(COPY jl DESTINATION ${CMAKE_BINARY_DIR})
 file(COPY disable_compat.json DESTINATION ${CMAKE_BINARY_DIR})
 file(COPY force_compat.json DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY adios2_config.xml DESTINATION ${CMAKE_BINARY_DIR})
 
 # preparation for finding library path
 if(DEFINED ENV{CPATH})
