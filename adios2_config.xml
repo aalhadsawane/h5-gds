@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<adios-config>
+    <io name="SimulationOutput">
+        <engine type="HDF5"/>
+    </io>
+</adios-config>

@@ -1,6 +1,6 @@
-# h5gds
+# h5gds (ADIOS2 Port)
 
-* Simple benchmark code for GPUDirect Storage (GDS) via HDF5
+* Simple benchmark code for GPUDirect Storage (GDS) via ADIOS2 (HDF5 Engine)
 * Developed by Yohei MIKI (Information Technology Center, The University of Tokyo)
 * Released under the MIT license, see LICENSE for detail
 * Copyright (c) 2023 Information Technology Center, The University of Tokyo
@@ -14,26 +14,15 @@
   * [CUDA Samples](https://github.com/nvidia/cuda-samples)
     * set path of directly contains `helper_cuda.h` as `CPATH`, `CUDA_SAMPLES_DIR`, or `CUDA_SAMPLES_INC` for CMake
     * otherwise, edit `cmake/modules/FindCUDA_samples.cmake` properly
-  * [HDF5](https://www.hdfgroup.org/solutions/hdf5/) (>= 1.14.0)
-  * [HDF5 Nvidia GPUDirect Storage VFD](https://github.com/hpc-io/vfd-gds)
-    * set path of directly contains `H5FDgds.h` as `CPATH`, `VFD_GDS_DIR`, or `VFD_GDS_INC` for CMake
-    * set path of directly contains `libhdf5_vfd_gds.so` as `LD_LIBRARY_PATH`, `VFD_GDS_DIR`, or `VFD_GDS_LIB` for CMake
-    * otherwise, edit `cmake/modules/FindHDF5VFD_GDS.cmake` properly
+  * [ADIOS2](https://github.com/ornladios/ADIOS2) (with HDF5 and CUDA support)
+    * set path via `ADIOS2_ROOT` or `CMAKE_PREFIX_PATH`
   * [MPI](https://www.mpi-forum.org/) (for multi-node benchmarks)
+
 * Configuration using CUI
 
   ```sh
   cmake -S . -B build [option]
   cd build
-  make
-  ```
-
-* Configuration using GUI
-
-  ```sh
-  cmake -S . -B build
-  cd build
-  ccmake -S .. # set options using the GUI interface
   make
   ```
 
@@ -74,11 +63,7 @@
 
     | input | note |
     | ---- | ---- |
-    | `--asis` | adopt asis mode: read/write without hyperslab (i.e., disable hyperslab mode) |
     | `--num VALUE` | set VALUE as number of particles |
-    | `--fblk VALUE` | set VALUE as file block size (byte) |
-    | `--cbuf VALUE` | set VALUE as copy buffer size (byte); must be a multiple of the file block size |
-    | `--memb VALUE` | set VALUE as memory boundary (byte) |
 
   * options have no impact on benchmark score
 
@@ -89,10 +74,12 @@
     | `--virial VALUE` | set VALUE as the initial Virial ratio of the system |
     | `--radius VALUE` | set VALUE as the initial radius of the system |
     | `--mass VALUE` | set VALUE as the total mass of the system |
-    | `--xdmf` | generate XDMF file to visualize the snapshot (only effective under hyperslab mode) |
     | `--output-path PATH` | set PATH as directory to write benchmark files (default: `dat`). Can be specified multiple times for different ranks. |
     | `--input-path PATH` | set PATH as the file to read during read benchmark. If omitted, the file written in the write phase is used. |
     | `--source-file FILE` | load initial GPU data from FILE instead of generating it. Can be specified multiple times for different ranks. |
+
+* Configuration via `adios2_config.xml`
+    * The engine type and parameters (e.g., GDS settings) can be configured in `adios2_config.xml` located in the execution directory.
 
 ## Multi-node Benchmarking on Miyabi Supercomputer
 
@@ -104,8 +91,6 @@ The tool is configured with a hardcoded assumption of **72 cores per node** (`MI
 *   **Node ID**: `mpi_rank / 72`
 *   **Local Rank**: `mpi_rank % 72`
 *   **GPU ID**: `local_rank % device_count` (since Miyabi has 1 GPU per node, this is typically 0).
-
-If you run with more than 72 processes per node, or on a system with a different core count, you should adjust `MIYABI_CORES_PER_NODE` in `src/h5gds.cu`.
 
 ### Example: Local XFS SSD vs Remote NFS-RDMA
 
@@ -127,15 +112,15 @@ Detailed per-rank results are appended to `log/h5gds_benchmark.csv`.
 ## Output Files
 
 *   **HDF5 Data**: `<output-path>/<uuid>_rank<rank>.h5`
-*   **XDMF (optional)**: `<output-path>/<uuid>_rank<rank>.xdmf` (points to its corresponding HDF5 file)
+    *   Written via ADIOS2 HDF5 Engine.
 *   **Benchmark Log**: `log/h5gds_benchmark.csv` (includes per-rank statistics)
 
 ## Data types
 
 * $N$-element arrays to represent $N$-body particles
 
-  | quantity | data on GPU | dataset in HDF5 file <br> (asis mode) | dataset in HDF5 file <br> (hyperslab mode) |
+  | quantity | data on GPU | ADIOS2 variable | Shape |
   | ---- | ---- | ---- | ---- |
-  | position (x, y, z) <br> mass (w) | float4 pos[N] | float4 pos[N] | float position[N][3] <br> float mass[N] |
-  | velocity (x, y) <br> velocity(z) | float2 vel_xy[N] <br> float vel_z[N] | float2 vel_xy[N] <br> float vel_z[N] | float velocity[N][3] |
-  | particle ID | uint64_t idx[N] | uint64_t id[N] | uint64_t id[N] |
+  | position (x, y, z) <br> mass (w) | float4 pos[N] | `pos_mass` | [N, 4] |
+  | velocity (x, y) <br> velocity(z) | float2 vel_xy[N] <br> float vel_z[N] | `vel_xy` <br> `vel_z` | [N, 2] <br> [N] |
+  | particle ID | uint64_t idx[N] | `id` | [N] |
