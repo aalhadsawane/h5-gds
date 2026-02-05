@@ -192,6 +192,9 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
     H5Pset_fapl_sec2(fapl);
   }
 
+  // Ensure file offsets are aligned with the block size for GDS performance
+H5Pset_alignment(fapl, 0, fblk);
+
   // create HDF5 file
   auto uuid = boost::uuids::random_generator{}();
   const auto series = boost::lexical_cast<std::string>(uuid);
