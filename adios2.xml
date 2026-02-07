@@ -1,13 +1,61 @@
 <?xml version="1.0"?>
 <adios-config>
 
-    <!-- Configuration for ADIOS2 Output/Input using HDF5 engine -->
+    <!--
+        Configuration for ADIOS2 Output/Input using HDF5 engine.
+
+        This file controls the I/O backend without requiring recompilation.
+
+        VFD Selection (GPUDirect Storage):
+        To use the 'gds' VFD (libhdf5_vfd_gds.so), ensure:
+        1. HDF5_PLUGIN_PATH environment variable points to the directory containing the VFD library.
+        2. HDF5_DRIVER environment variable is set to 'gds'.
+
+        Example:
+        export HDF5_PLUGIN_PATH=/path/to/vfd-gds/build/bin:$HDF5_PLUGIN_PATH
+        export HDF5_DRIVER=gds
+    -->
+
     <io name="SimulationOutput">
         <engine type="HDF5">
-            <!-- Parameters specific to HDF5 engine can be added here if needed -->
-            <!-- For example, enabling GDS or other features -->
-            <!-- <parameter key="H5_Use_GDS" value="true"/> -->
+            <!--
+                HDF5 Engine Parameters:
+                Ref: https://adios2.readthedocs.io/en/latest/engines/engines.html#hdf5
+            -->
+
+            <!--
+                CollectiveMetadata:
+                If true, metadata operations are collective (MPI).
+                Default: true (if built with parallel HDF5)
+            -->
+            <parameter key="CollectiveMetadata" value="true"/>
+
+            <!--
+                IdleH5:
+                If true, keeps the HDF5 file open between steps.
+                Default: false
+            -->
+            <parameter key="IdleH5" value="false"/>
+
+            <!--
+                BufferChunkSize:
+                Size of the internal buffer for chunking.
+            -->
+            <!-- <parameter key="BufferChunkSize" value="128Mb"/> -->
+
+            <!--
+                Parameters for tuning HDF5 performance can also be passed if supported by the engine version.
+                E.g., alignment properties are typically handled via environment or API defaults in this version.
+            -->
         </engine>
+
+        <!--
+            Variable transport method.
+            For GPU data, 'File' transport is standard.
+        -->
+        <transport type="File">
+            <parameter key="Library" value="HDF5"/>
+        </transport>
     </io>
 
 </adios-config>

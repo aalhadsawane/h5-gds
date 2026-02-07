@@ -66,6 +66,10 @@ echo ""
 # Set ADIOS2 environment if needed (module load or paths)
 # Assuming ADIOS2 is available in environment or loaded via module
 
+# Set HDF5 Plugin Path for GDS VFD (Required for ADIOS2 HDF5 backend to find GDS driver)
+# Assuming VFD GDS is built in the standard location or provided via module
+export HDF5_PLUGIN_PATH=/work/jh250079/n14001/vfd-gds/build/bin:$HDF5_PLUGIN_PATH
+
 # Set cuFile configuration for GDS (ADIOS2 might use this if GDS is enabled via HDF5 engine)
 export CUFILE_ENV_PATH_JSON=${PBS_O_WORKDIR}/disable_compat.json
 
@@ -144,18 +148,21 @@ do
     echo "VFD MODE: ${VFD}"
     echo "========================================="
 
-    # Configure GDS mode and set actual VFD driver
+    # Configure GDS mode and set actual VFD driver via HDF5 environment variable
     if [ "$VFD" == "gds-native" ]; then
         export CUFILE_ENV_PATH_JSON="${GDS_NATIVE_JSON}"
+        export HDF5_DRIVER="gds"
         ACTUAL_VFD="gds"
         echo "Using GDS Native mode (disable_compat.json)"
     elif [ "$VFD" == "gds-compat" ]; then
         export CUFILE_ENV_PATH_JSON="${GDS_COMPAT_JSON}"
+        export HDF5_DRIVER="gds"
         ACTUAL_VFD="gds"
         echo "Using GDS Compat mode (force_compat.json)"
     else
         # For sec2, no JSON needed
         unset CUFILE_ENV_PATH_JSON
+        export HDF5_DRIVER="sec2"
         ACTUAL_VFD="$VFD"
     fi
 

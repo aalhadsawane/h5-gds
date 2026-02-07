@@ -27,6 +27,14 @@ find_package(Boost REQUIRED COMPONENTS program_options filesystem timer system)
 # find ADIOS2 (only for h5gds project)
 if(PROJECT_NAME STREQUAL "h5gds")
   find_package(ADIOS2 REQUIRED)
+
+  # Check for GDS VFD availability (for runtime environment setup)
+  find_package(HDF5VFD_GDS REQUIRED COMPONENTS C)
+  if(HDF5VFD_GDS_FOUND)
+    message(STATUS "GDS VFD Library found at: ${HDF5VFD_GDS_LIBRARIES}")
+    # We do not link it directly as ADIOS2 loads it dynamically via HDF5,
+    # but finding it ensures the environment is correct.
+  endif()
 endif()
 
 # link libraries
