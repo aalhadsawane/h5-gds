@@ -131,17 +131,26 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
   // Apply runtime parameters from command line arguments
   // This allows the parameter sweep in job.pbs to control the HDF5 backend
-  // Note: We prioritize parameters that can be passed to the engine.
-  // 'vfd' is largely handled by HDF5_DRIVER env var, but we enforce it here if possible.
+
+  // Validate VFD driver selection environment variable (HDF5_DRIVER) against requested VFD
+  const char* hdf5_driver_env = std::getenv("HDF5_DRIVER");
+  std::string active_vfd = (hdf5_driver_env != nullptr) ? std::string(hdf5_driver_env) : "default (sec2)";
 
   if (vfd_name == "gds") {
-    // GDS VFD is typically selected via HDF5_DRIVER=gds environment variable.
+    if (active_vfd != "gds") {
+      std::cerr << "WARNING: User requested VFD 'gds' but HDF5_DRIVER environment variable is set to '"
+                << active_vfd << "'. GDS may not be active!" << std::endl;
+    }
   } else if (vfd_name == "direct") {
-    // Direct VFD
-    // Note: ADIOS2 HDF5 engine usually respects HDF5_DRIVER env var.
-    // Ensure your environment sets HDF5_DRIVER=direct if using this mode.
+    if (active_vfd != "direct") {
+      std::cerr << "WARNING: User requested VFD 'direct' but HDF5_DRIVER environment variable is set to '"
+                << active_vfd << "'. Direct I/O may not be active!" << std::endl;
+    }
   } else if (vfd_name == "sec2") {
-    // Standard VFD
+    if (active_vfd != "sec2" && hdf5_driver_env != nullptr) {
+      std::cerr << "WARNING: User requested VFD 'sec2' but HDF5_DRIVER environment variable is set to '"
+                << active_vfd << "'." << std::endl;
+    }
   } else {
     std::cerr << "Invalid VFD driver: " << vfd_name << ". Must be one of: sec2, gds, direct" << std::endl;
     std::exit(EXIT_FAILURE);
