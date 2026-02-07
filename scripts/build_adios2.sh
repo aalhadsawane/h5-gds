@@ -13,10 +13,19 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
 
+# Determine target base directory
+if [ -n "$1" ]; then
+    BASE_DIR="$(readlink -f "$1")"
+    echo "Using custom base directory: ${BASE_DIR}"
+else
+    BASE_DIR="${PROJECT_ROOT}"
+    echo "Using default base directory (project root): ${BASE_DIR}"
+fi
+
 ADIOS2_VERSION="v2.10.2" # Using a stable release tag
-INSTALL_DIR="${PROJECT_ROOT}/dependencies/adios2/${ADIOS2_VERSION}"
-BUILD_DIR="${PROJECT_ROOT}/dependencies/adios2-build"
-SOURCE_DIR="${PROJECT_ROOT}/dependencies/adios2-src"
+INSTALL_DIR="${BASE_DIR}/dependencies/adios2/${ADIOS2_VERSION}"
+BUILD_DIR="${BASE_DIR}/dependencies/adios2-build"
+SOURCE_DIR="${BASE_DIR}/dependencies/adios2-src"
 
 # --- Modules ---
 # Adjust these based on 'module avail' output on Miyabi
@@ -37,7 +46,7 @@ echo "HDF5_ROOT=$HDF5_ROOT" # Check if module sets this
 echo "CUDA_HOME=$CUDA_HOME"
 
 # --- Clone ---
-mkdir -p "${PROJECT_ROOT}/dependencies"
+mkdir -p "${BASE_DIR}/dependencies"
 if [ ! -d "${SOURCE_DIR}" ]; then
     echo "Cloning ADIOS2 (${ADIOS2_VERSION})..."
     git clone --depth 1 --branch ${ADIOS2_VERSION} https://github.com/ornladios/ADIOS2.git "${SOURCE_DIR}"
