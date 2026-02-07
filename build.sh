@@ -14,7 +14,15 @@ else
     echo "WARNING: adios2_env.sh not found. Assuming ADIOS2 is already in environment."
 fi
 
+# Check for CUDA_SAMPLES_DIR env var, default to legacy path if not set
+if [ -z "$CUDA_SAMPLES_DIR" ]; then
+    CUDA_SAMPLES_DIR="/work/jh250079/n14001/cuda-samples/Common"
+    echo "WARNING: CUDA_SAMPLES_DIR not set. Using default: $CUDA_SAMPLES_DIR"
+else
+    echo "Using CUDA_SAMPLES_DIR: $CUDA_SAMPLES_DIR"
+fi
+
 cmake -S . -B build \
-    -DCUDA_SAMPLES_DIR=/work/jh250079/n14001/cuda-samples/Common \
+    -DCUDA_SAMPLES_DIR=${CUDA_SAMPLES_DIR} \
     -DTARGET_GPU=NVIDIA_CC90 \
     -DUSE_SYSTEM_MALLOC=ON

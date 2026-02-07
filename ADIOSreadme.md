@@ -49,13 +49,27 @@ The build process is managed by CMake.
     ```
 
 2.  **Configure**:
-    Run `build.sh` or execute CMake manually:
+    Run `build.sh`. Note that you may need to specify the location of CUDA samples if not found.
+
+    ```bash
+    # Provide path to CUDA samples (containing helper_cuda.h)
+    export CUDA_SAMPLES_DIR=/path/to/cuda-samples/Common
+    ./build.sh
+    ```
+
+    Or execute CMake manually:
     ```bash
     mkdir build && cd build
     cmake .. \
-        -DCUDA_SAMPLES_DIR=/path/to/cuda/samples \
+        -DCUDA_SAMPLES_DIR=/path/to/cuda-samples/Common \
         -DTARGET_GPU=NVIDIA_CC90 \
         -DUSE_SYSTEM_MALLOC=ON
+    ```
+
+    *Note: `helper_cuda.h` is required. If you don't have the samples, you can clone them:*
+    ```bash
+    git clone https://github.com/NVIDIA/cuda-samples.git
+    export CUDA_SAMPLES_DIR=$(pwd)/cuda-samples/Common
     ```
 
     The CMake configuration will:
