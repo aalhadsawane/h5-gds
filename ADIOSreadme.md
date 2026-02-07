@@ -4,22 +4,44 @@ This branch ports the codebase from direct HDF5 C-API usage to ADIOS2 C++ API, l
 
 ## Prerequisites
 
-- **ADIOS2**: Installed and available in the environment (e.g., `module load adios2`).
-- **HDF5**: With parallel support if MPI is used.
-- **HDF5 VFD GDS Plugin**: `libhdf5_vfd_gds.so` (available via `vfd-gds` project).
-- **CUDA Toolkit**: For GPU compilation.
+- **ADIOS2**: Built from source (see below) or available as a module.
+- **HDF5**: With parallel support if MPI is used (e.g., `phdf5/1.14.6` or system `hdf5/1.14.6`).
+- **HDF5 VFD GDS Plugin**: `libhdf5_vfd_gds.so` (available via `vfd-gds` module or project).
+- **CUDA Toolkit**: For GPU compilation (e.g., `cuda/12.9`).
+
+### Building ADIOS2 from Source
+
+Since ADIOS2 is not available as a standard module on Miyabi, you must build it from source.
+
+1.  **Execute Build Script**:
+    ```bash
+    ./scripts/build_adios2.sh
+    ```
+    This script will:
+    - Load necessary modules (`cmake`, `hdf5`, `cuda`).
+    - Clone ADIOS2 source to `~/src/adios2`.
+    - Build and install it to `~/opt/adios2`.
+
+2.  **Verify Installation**:
+    After the build completes, the script will output environment variables to set.
+    Ensure `libadios2_cxx11.so` and `adios2-config` are present in the install directory.
 
 ## Compilation
 
 The build process is managed by CMake.
 
-1.  **Load Modules**:
+1.  **Load Environment**:
+
+    If using a custom ADIOS2 build:
     ```bash
     module purge
-    module load cuda
-    module load adios2
-    # Load HDF5 if not included in ADIOS2 module
-    module load hdf5
+    module load cuda/12.9 hdf5/1.14.6 cmake/3.31.1
+
+    # Set ADIOS2 paths (adjust version/path as per build script output)
+    export ADIOS2_ROOT=${HOME}/opt/adios2/v2.10.2
+    export PATH=${ADIOS2_ROOT}/bin:${PATH}
+    export LD_LIBRARY_PATH=${ADIOS2_ROOT}/lib64:${LD_LIBRARY_PATH}
+    export CMAKE_PREFIX_PATH=${ADIOS2_ROOT}:${CMAKE_PREFIX_PATH}
     ```
 
 2.  **Configure**:
