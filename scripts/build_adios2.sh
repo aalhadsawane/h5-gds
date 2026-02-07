@@ -93,7 +93,8 @@ echo "Generating environment setup script: ${ENV_FILE}"
 cat <<EOF > "${ENV_FILE}"
 #!/bin/bash
 # Auto-generated ADIOS2 environment setup script
-export ADIOS2_DIR=${INSTALL_DIR}
+# Uses \$HOME-relative path if applicable for portability
+export ADIOS2_DIR=${INSTALL_DIR/#$HOME/\$HOME}
 export PATH=\${ADIOS2_DIR}/bin:\${PATH}
 export LD_LIBRARY_PATH=\${ADIOS2_DIR}/lib64:\${LD_LIBRARY_PATH}
 export CMAKE_PREFIX_PATH=\${ADIOS2_DIR}:\${CMAKE_PREFIX_PATH}

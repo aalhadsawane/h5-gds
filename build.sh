@@ -5,6 +5,7 @@ module load nv-hpcx/25.9
 module load cmake/3.31.1
 module load cuda/12.9
 module load hdf5/1.14.6
+module load vfd-gds/1.0.2
 
 # Set ADIOS2 environment (assuming default install from build script)
 # Load generated environment script if present

@@ -56,8 +56,13 @@ ITERATIONS=1
 # ENVIRONMENT SETUP
 # ============================================
 module purge
-module load cuda
-module unload nvidia
+# Load base modules
+module load nvidia/25.9
+module load nv-hpcx/25.9
+module load cuda/12.9
+module load hdf5/1.14.6
+# Load VFD GDS module
+module load vfd-gds/1.0.2
 
 echo "=== Loaded Modules ==="
 module list
