@@ -86,14 +86,28 @@ make -j$(nproc)
 echo "Installing to ${INSTALL_DIR}..."
 make install
 
+# --- Generate Environment Setup Script ---
+ENV_FILE="${PROJECT_ROOT}/adios2_env.sh"
+echo "Generating environment setup script: ${ENV_FILE}"
+
+cat <<EOF > "${ENV_FILE}"
+#!/bin/bash
+# Auto-generated ADIOS2 environment setup script
+export ADIOS2_DIR=${INSTALL_DIR}
+export PATH=\${ADIOS2_DIR}/bin:\${PATH}
+export LD_LIBRARY_PATH=\${ADIOS2_DIR}/lib64:\${LD_LIBRARY_PATH}
+export CMAKE_PREFIX_PATH=\${ADIOS2_DIR}:\${CMAKE_PREFIX_PATH}
+echo "Loaded ADIOS2 environment from \${ADIOS2_DIR}"
+EOF
+
+chmod +x "${ENV_FILE}"
+
 # --- Usage Instructions ---
 echo ""
 echo "=== Build Complete ==="
-echo "To use this ADIOS2 installation, add the following to your environment (e.g., .bashrc or job script):"
+echo "Environment setup script created at: ${ENV_FILE}"
+echo "To use this ADIOS2 installation, run:"
 echo ""
-echo "export ADIOS2_DIR=${INSTALL_DIR}"
-echo "export PATH=\${ADIOS2_DIR}/bin:\${PATH}"
-echo "export LD_LIBRARY_PATH=\${ADIOS2_DIR}/lib64:\${LD_LIBRARY_PATH}"
-echo "export CMAKE_PREFIX_PATH=\${ADIOS2_DIR}:\${CMAKE_PREFIX_PATH}"
+echo "  source ${ENV_FILE}"
 echo ""
-echo "Or create a custom modulefile."
+echo "This file is automatically sourced by build.sh and job.pbs."

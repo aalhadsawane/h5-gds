@@ -7,12 +7,12 @@ module load cuda/12.9
 module load hdf5/1.14.6
 
 # Set ADIOS2 environment (assuming default install from build script)
-# Build script installs to dependencies/adios2/v2.10.2
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-export ADIOS2_DIR=${SCRIPT_DIR}/dependencies/adios2/v2.10.2
-export PATH=${ADIOS2_DIR}/bin:${PATH}
-export LD_LIBRARY_PATH=${ADIOS2_DIR}/lib64:${LD_LIBRARY_PATH}
-export CMAKE_PREFIX_PATH=${ADIOS2_DIR}:${CMAKE_PREFIX_PATH}
+# Load generated environment script if present
+if [ -f "adios2_env.sh" ]; then
+    source "adios2_env.sh"
+else
+    echo "WARNING: adios2_env.sh not found. Assuming ADIOS2 is already in environment."
+fi
 
 cmake -S . -B build \
     -DCUDA_SAMPLES_DIR=/work/jh250079/n14001/cuda-samples/Common \

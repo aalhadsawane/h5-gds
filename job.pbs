@@ -64,10 +64,12 @@ module list
 echo ""
 
 # Set ADIOS2 environment
-# Assuming installed via scripts/build_adios2.sh to dependencies/adios2/v2.10.2
-export ADIOS2_DIR=${PBS_O_WORKDIR}/dependencies/adios2/v2.10.2
-export PATH=${ADIOS2_DIR}/bin:${PATH}
-export LD_LIBRARY_PATH=${ADIOS2_DIR}/lib64:${LD_LIBRARY_PATH}
+# Load generated environment script if present, otherwise assume system module or manual setup
+if [ -f "${PBS_O_WORKDIR}/adios2_env.sh" ]; then
+    source "${PBS_O_WORKDIR}/adios2_env.sh"
+else
+    echo "WARNING: adios2_env.sh not found. Assuming ADIOS2 is already in environment."
+fi
 
 # Set HDF5 Plugin Path for GDS VFD (Required for ADIOS2 HDF5 backend to find GDS driver)
 # Assuming VFD GDS is built in the standard location or provided via module
