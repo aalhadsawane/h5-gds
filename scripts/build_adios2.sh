@@ -9,10 +9,14 @@
 # - CUDA (optional, but recommended for GPU support)
 
 # --- Configuration ---
+# Get the root directory of the project (assuming script is in scripts/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
+
 ADIOS2_VERSION="v2.10.2" # Using a stable release tag
-INSTALL_DIR="${HOME}/opt/adios2/${ADIOS2_VERSION}"
-BUILD_DIR="${HOME}/src/adios2-build"
-SOURCE_DIR="${HOME}/src/adios2"
+INSTALL_DIR="${PROJECT_ROOT}/dependencies/adios2/${ADIOS2_VERSION}"
+BUILD_DIR="${PROJECT_ROOT}/dependencies/adios2-build"
+SOURCE_DIR="${PROJECT_ROOT}/dependencies/adios2-src"
 
 # --- Modules ---
 # Adjust these based on 'module avail' output on Miyabi
@@ -33,7 +37,7 @@ echo "HDF5_ROOT=$HDF5_ROOT" # Check if module sets this
 echo "CUDA_HOME=$CUDA_HOME"
 
 # --- Clone ---
-mkdir -p "${HOME}/src"
+mkdir -p "${PROJECT_ROOT}/dependencies"
 if [ ! -d "${SOURCE_DIR}" ]; then
     echo "Cloning ADIOS2 (${ADIOS2_VERSION})..."
     git clone --depth 1 --branch ${ADIOS2_VERSION} https://github.com/ornladios/ADIOS2.git "${SOURCE_DIR}"

@@ -19,12 +19,11 @@ Since ADIOS2 is not available as a standard module on Miyabi, you must build it 
     ```
     This script will:
     - Load necessary modules (`cmake`, `hdf5`, `cuda`).
-    - Clone ADIOS2 source to `~/src/adios2`.
-    - Build and install it to `~/opt/adios2`.
+    - Clone ADIOS2 source to `dependencies/adios2-src`.
+    - Build and install it to `dependencies/adios2/v2.10.2` within the project directory.
 
 2.  **Verify Installation**:
-    After the build completes, the script will output environment variables to set.
-    Ensure `libadios2_cxx11.so` and `adios2-config` are present in the install directory.
+    Ensure `libadios2_cxx11.so` and `adios2-config` are present in `dependencies/adios2/v2.10.2`.
 
 ## Compilation
 
@@ -37,8 +36,8 @@ The build process is managed by CMake.
     module purge
     module load cuda/12.9 hdf5/1.14.6 cmake/3.31.1
 
-    # Set ADIOS2 paths (adjust version/path as per build script output)
-    export ADIOS2_ROOT=${HOME}/opt/adios2/v2.10.2
+    # Set ADIOS2 paths (automatically handled by build.sh, but for manual use:)
+    export ADIOS2_ROOT=$(pwd)/dependencies/adios2/v2.10.2
     export PATH=${ADIOS2_ROOT}/bin:${PATH}
     export LD_LIBRARY_PATH=${ADIOS2_ROOT}/lib64:${LD_LIBRARY_PATH}
     export CMAKE_PREFIX_PATH=${ADIOS2_ROOT}:${CMAKE_PREFIX_PATH}

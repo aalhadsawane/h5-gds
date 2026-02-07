@@ -64,8 +64,8 @@ module list
 echo ""
 
 # Set ADIOS2 environment
-# Assuming installed via scripts/build_adios2.sh to ~/opt/adios2/v2.10.2
-export ADIOS2_DIR=${HOME}/opt/adios2/v2.10.2
+# Assuming installed via scripts/build_adios2.sh to dependencies/adios2/v2.10.2
+export ADIOS2_DIR=${PBS_O_WORKDIR}/dependencies/adios2/v2.10.2
 export PATH=${ADIOS2_DIR}/bin:${PATH}
 export LD_LIBRARY_PATH=${ADIOS2_DIR}/lib64:${LD_LIBRARY_PATH}
 
