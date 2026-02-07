@@ -30,12 +30,14 @@ SOURCE_DIR="${BASE_DIR}/dependencies/adios2-src"
 # --- Modules ---
 # Adjust these based on 'module avail' output on Miyabi
 module purge
+# Load compiler and MPI first (required for HDF5)
+module load nvidia/25.9
+module load nv-hpcx/25.9
+
+# Load dependencies
 module load cmake/3.31.1
-module load hdf5/1.14.6
 module load cuda/12.9
-module load mpi/nvidia/25.9 # Assuming NVHPC SDK or similar MPI
-# If HDF5 is parallel (phdf5), use that instead of serial hdf5
-# module load phdf5/1.14.6
+module load hdf5/1.14.6
 
 echo "=== Environment ==="
 module list

@@ -1,8 +1,10 @@
 # Load required modules
 module purge
+module load nvidia/25.9
+module load nv-hpcx/25.9
 module load cmake/3.31.1
-module load hdf5/1.14.6
 module load cuda/12.9
+module load hdf5/1.14.6
 
 # Set ADIOS2 environment (assuming default install from build script)
 # Build script installs to dependencies/adios2/v2.10.2

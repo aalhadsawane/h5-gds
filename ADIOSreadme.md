@@ -40,7 +40,8 @@ The build process is managed by CMake.
     If using a custom ADIOS2 build:
     ```bash
     module purge
-    module load cuda/12.9 hdf5/1.14.6 cmake/3.31.1
+    module load nvidia/25.9 nv-hpcx/25.9
+    module load cmake/3.31.1 cuda/12.9 hdf5/1.14.6
 
     # Set ADIOS2 paths (automatically handled by build.sh, but for manual use:)
     export ADIOS2_ROOT=$(pwd)/dependencies/adios2/v2.10.2
