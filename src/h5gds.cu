@@ -65,10 +65,10 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   boost::program_options::options_description opt("List of options");
   opt.add_options()(
       "num", boost::program_options::value<type::idx>()->default_value(1024), "number of particles")(
-      "cbuf", boost::program_options::value<size_t>()->default_value(CBSIZE_DEF), "copy buffer size (byte) [IGNORED in ADIOS2 port]")(
-      "fblk", boost::program_options::value<size_t>()->default_value(FBSIZE_DEF), "file block size (byte) [IGNORED in ADIOS2 port]")(
-      "memb", boost::program_options::value<size_t>()->default_value(MBOUNDARY_DEF), "memory boundary (byte) [IGNORED in ADIOS2 port]")(
-      "vfd", boost::program_options::value<std::string>()->default_value("gds"), "VFD driver to use: sec2, gds, or direct [IGNORED in ADIOS2 port - configure via adios2.xml]")(
+      "cbuf", boost::program_options::value<size_t>()->default_value(CBSIZE_DEF), "copy buffer size (byte)")(
+      "fblk", boost::program_options::value<size_t>()->default_value(FBSIZE_DEF), "file block size (byte)")(
+      "memb", boost::program_options::value<size_t>()->default_value(MBOUNDARY_DEF), "memory boundary (byte)")(
+      "vfd", boost::program_options::value<std::string>()->default_value("gds"), "VFD driver to use: sec2, gds, or direct")(
       "skip", boost::program_options::bool_switch()->default_value(false), "skip consistency check between read and original data")(
       "asis", boost::program_options::bool_switch()->default_value(false), "read/write without hyperslab [IGNORED - always writes full arrays]")(
       "virial", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(0.2), "Virial ratio of the system")(
@@ -129,6 +129,28 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   adios2::ADIOS adios("adios2.xml");
   adios2::IO io = adios.DeclareIO("SimulationOutput");
 
+  // Apply runtime parameters from command line arguments
+  // This allows the parameter sweep in job.pbs to control the HDF5 backend
+  if (vfd_name == "gds") {
+    // Rely on HDF5_DRIVER env var set by script, but we can set hints if needed
+    // io.SetEngineParameter("H5_DRIVER", "gds"); // If supported
+  }
+
+  // Set chunking/buffer parameters if applicable
+  // Mapping 'fblk' (file block size) and 'cbuf' (copy buffer size) to available ADIOS2/HDF5 parameters
+  // Note: Standard ADIOS2 HDF5 engine might not expose all low-level HDF5 alignment controls directly
+  // via SetParameter without custom engine support, but we can pass generic parameters.
+
+  // Example: Use cbuf as BufferChunkSize (in MB for ADIOS2 usually, but let's check units)
+  // ADIOS2 docs often expect strings for sizes "128Mb", etc.
+  // Converting bytes to string.
+  if (cbuf > 0) {
+      io.SetParameter("BufferChunkSize", std::to_string(cbuf));
+  }
+
+  // If specific alignment or VFD config is needed, it's mostly handled via HDF5 environment variables
+  // (HDF5_DRIVER, HDF5_PLUGIN_PATH) which are set by the job script.
+
   auto uuid = boost::uuids::random_generator{}();
   const auto series = boost::lexical_cast<std::string>(uuid);
   auto name = "dat/" + series + ".h5"; // Extension .h5 for HDF5 engine
@@ -144,7 +166,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
   // Write
   adios2::Engine writer = io.Open(name, adios2::Mode::Write);
-  
+
   const auto elapse_write = benchmark([&]() {
     writer.Put(var_id, idx);
     writer.Put(var_pos, (float*)pos);

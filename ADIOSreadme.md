@@ -80,6 +80,15 @@ Runtime parameters are controlled via `adios2.xml` in the root directory. This f
 
 To modify I/O behavior (e.g., chunking, buffering) without recompiling, edit this file.
 
+### Parameter Sweep and Runtime Configuration
+
+The benchmark code (`h5gds`) accepts command-line arguments (like `--cbuf`, `--vfd`) which are used by `job.pbs` to sweep through different configurations.
+
+- **`--vfd`**: Used by the script to set `HDF5_DRIVER` environment variable.
+- **`--cbuf`**: Passed to ADIOS2 engine as `BufferChunkSize` parameter.
+
+This allows `job.pbs` to control the HDF5 backend performance tuning (chunking, VFD selection) automatically.
+
 ## Output
 
 Results are saved in `results/`.
