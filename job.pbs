@@ -43,7 +43,7 @@ FBLK_VALUES=(
 CBUF_MULTIPLIER_VALUES=(1)
 
 # VFD modes to test
-VFD_MODES=(sec2 gds-native gds-compat)
+VFD_MODES=(sec2 gds-native gds-compat direct)
 
 # GDS configuration files
 GDS_NATIVE_JSON="${PBS_O_WORKDIR}/disable_compat.json"
@@ -159,6 +159,12 @@ do
         export HDF5_DRIVER="gds"
         ACTUAL_VFD="gds"
         echo "Using GDS Compat mode (force_compat.json)"
+    elif [ "$VFD" == "direct" ]; then
+        # For direct VFD (O_DIRECT)
+        unset CUFILE_ENV_PATH_JSON
+        export HDF5_DRIVER="direct"
+        ACTUAL_VFD="direct"
+        echo "Using HDF5 Direct VFD"
     else
         # For sec2, no JSON needed
         unset CUFILE_ENV_PATH_JSON

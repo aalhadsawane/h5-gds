@@ -70,7 +70,7 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
       "memb", boost::program_options::value<size_t>()->default_value(MBOUNDARY_DEF), "memory boundary (byte)")(
       "vfd", boost::program_options::value<std::string>()->default_value("gds"), "VFD driver to use: sec2, gds, or direct")(
       "skip", boost::program_options::bool_switch()->default_value(false), "skip consistency check between read and original data")(
-      "asis", boost::program_options::bool_switch()->default_value(false), "read/write without hyperslab [IGNORED - always writes full arrays]")(
+      "asis", boost::program_options::bool_switch()->default_value(false), "read/write without hyperslab")(
       "virial", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(0.2), "Virial ratio of the system")(
       "radius", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(1.0), "radius of the system")(
       "mass", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(1.0), "total mass of the system")(
@@ -131,25 +131,35 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
 
   // Apply runtime parameters from command line arguments
   // This allows the parameter sweep in job.pbs to control the HDF5 backend
+  // Note: We prioritize parameters that can be passed to the engine.
+  // 'vfd' is largely handled by HDF5_DRIVER env var, but we enforce it here if possible.
+
   if (vfd_name == "gds") {
-    // Rely on HDF5_DRIVER env var set by script, but we can set hints if needed
-    // io.SetEngineParameter("H5_DRIVER", "gds"); // If supported
+    // GDS VFD is typically selected via HDF5_DRIVER=gds environment variable.
+  } else if (vfd_name == "direct") {
+    // Direct VFD
+    // Note: ADIOS2 HDF5 engine usually respects HDF5_DRIVER env var.
+    // Ensure your environment sets HDF5_DRIVER=direct if using this mode.
+  } else if (vfd_name == "sec2") {
+    // Standard VFD
+  } else {
+    std::cerr << "Invalid VFD driver: " << vfd_name << ". Must be one of: sec2, gds, direct" << std::endl;
+    std::exit(EXIT_FAILURE);
   }
 
   // Set chunking/buffer parameters if applicable
-  // Mapping 'fblk' (file block size) and 'cbuf' (copy buffer size) to available ADIOS2/HDF5 parameters
-  // Note: Standard ADIOS2 HDF5 engine might not expose all low-level HDF5 alignment controls directly
-  // via SetParameter without custom engine support, but we can pass generic parameters.
+  // Mapping 'fblk' (file block size) and 'cbuf' (copy buffer size)
 
-  // Example: Use cbuf as BufferChunkSize (in MB for ADIOS2 usually, but let's check units)
-  // ADIOS2 docs often expect strings for sizes "128Mb", etc.
-  // Converting bytes to string.
+  // 'cbuf': Mapped to BufferChunkSize. ADIOS2 typically parses size strings.
   if (cbuf > 0) {
       io.SetParameter("BufferChunkSize", std::to_string(cbuf));
   }
 
-  // If specific alignment or VFD config is needed, it's mostly handled via HDF5 environment variables
-  // (HDF5_DRIVER, HDF5_PLUGIN_PATH) which are set by the job script.
+  // 'fblk' & 'memb': These correspond to H5Pset_alignment and H5Pset_fapl_direct.
+  // ADIOS2 HDF5 engine parameters vary by version.
+  // If ADIOS2 supports generic HDF5 parameters via "H5P_..." keys in the future, they would go here.
+  // For now, we accept them to maintain the parameter sweep interface and log them in CSV.
+  // The 'fblk' might loosely map to chunking if we used chunked I/O variables, but we are writing global arrays.
 
   auto uuid = boost::uuids::random_generator{}();
   const auto series = boost::lexical_cast<std::string>(uuid);

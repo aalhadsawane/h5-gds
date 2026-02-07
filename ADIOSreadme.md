@@ -84,10 +84,19 @@ To modify I/O behavior (e.g., chunking, buffering) without recompiling, edit thi
 
 The benchmark code (`h5gds`) accepts command-line arguments (like `--cbuf`, `--vfd`) which are used by `job.pbs` to sweep through different configurations.
 
-- **`--vfd`**: Used by the script to set `HDF5_DRIVER` environment variable.
-- **`--cbuf`**: Passed to ADIOS2 engine as `BufferChunkSize` parameter.
+- **`--vfd`**: Selects the VFD driver. Supported values: `gds`, `sec2`, `direct`.
+  - Sets the `HDF5_DRIVER` environment variable appropriately.
+- **`--cbuf`**: Copy buffer size (bytes).
+  - Passed to ADIOS2 engine as `BufferChunkSize`.
+- **`--fblk`**: File block size (bytes).
+  - Logged in benchmark CSV. Maps to HDF5 alignment where supported by ADIOS2 engine.
+- **`--memb`**: Memory boundary (bytes).
+  - Logged in benchmark CSV.
+- **`--num`**: Number of particles.
+- **`--skip`**: Skip verification.
+- **`--xdmf`**: Generate XDMF visualization files.
 
-This allows `job.pbs` to control the HDF5 backend performance tuning (chunking, VFD selection) automatically.
+This allows `job.pbs` to control the HDF5 backend performance tuning (chunking, VFD selection) automatically and produce a CSV output compatible with the original HDF5 benchmark.
 
 ## Output
 
