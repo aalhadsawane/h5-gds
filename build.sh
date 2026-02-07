@@ -14,12 +14,28 @@ else
     echo "WARNING: adios2_env.sh not found. Assuming ADIOS2 is already in environment."
 fi
 
-# Check for CUDA_SAMPLES_DIR env var, default to legacy path if not set
-if [ -z "$CUDA_SAMPLES_DIR" ]; then
-    CUDA_SAMPLES_DIR="/work/jh250079/n14001/cuda-samples/Common"
-    echo "WARNING: CUDA_SAMPLES_DIR not set. Using default: $CUDA_SAMPLES_DIR"
+# Check for CUDA_SAMPLES_DIR env var, or find/download them
+if [ -n "$CUDA_SAMPLES_DIR" ]; then
+    echo "Using external CUDA_SAMPLES_DIR: $CUDA_SAMPLES_DIR"
 else
-    echo "Using CUDA_SAMPLES_DIR: $CUDA_SAMPLES_DIR"
+    # Define potential paths
+    LEGACY_PATH="/work/jh250079/n14001/cuda-samples/Common"
+    LOCAL_PATH="$(pwd)/dependencies/cuda-samples/Common"
+
+    if [ -d "$LEGACY_PATH" ]; then
+        CUDA_SAMPLES_DIR="$LEGACY_PATH"
+        echo "Found CUDA samples at legacy path: $CUDA_SAMPLES_DIR"
+    elif [ -d "$LOCAL_PATH" ]; then
+        CUDA_SAMPLES_DIR="$LOCAL_PATH"
+        echo "Found CUDA samples at local path: $CUDA_SAMPLES_DIR"
+    else
+        echo "CUDA samples not found. Downloading..."
+        mkdir -p dependencies
+        # Clone specific tag or default to master. Depth 1 for speed.
+        git clone --depth 1 https://github.com/NVIDIA/cuda-samples.git dependencies/cuda-samples
+        CUDA_SAMPLES_DIR="$LOCAL_PATH"
+        echo "Downloaded CUDA samples to: $CUDA_SAMPLES_DIR"
+    fi
 fi
 
 cmake -S . -B build \
