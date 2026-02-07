@@ -24,13 +24,9 @@ set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost REQUIRED COMPONENTS program_options filesystem timer system)
 
-# find HDF5 (only for h5gds project)
+# find ADIOS2 (only for h5gds project)
 if(PROJECT_NAME STREQUAL "h5gds")
-  enable_language(C)
-  find_package(HDF5 REQUIRED COMPONENTS C)
-  
-  # find VFD for GDS
-  find_package(HDF5VFD_GDS REQUIRED COMPONENTS C)
+  find_package(ADIOS2 REQUIRED)
 endif()
 
 # link libraries
@@ -38,11 +34,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   ${Boost_LIBRARIES}
 )
 
-# Link HDF5 only for h5gds project
+# Link ADIOS2 only for h5gds project
 if(PROJECT_NAME STREQUAL "h5gds")
   target_link_libraries(${PROJECT_NAME} PRIVATE
-    ${HDF5_LIBRARIES}
-    ${HDF5VFD_GDS_LIBRARIES}
+    adios2::adios2
   )
 endif()
 
@@ -65,14 +60,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
   ${Boost_INCLUDE_DIRS}
 )
-
-# Include HDF5 only for h5gds project
-if(PROJECT_NAME STREQUAL "h5gds")
-  target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-    ${HDF5_INCLUDE_DIRS}
-    ${HDF5VFDS_GDS_INCLUDE_DIRS}
-  )
-endif()
 
 # add definitions
 target_compile_definitions(${PROJECT_NAME} PUBLIC

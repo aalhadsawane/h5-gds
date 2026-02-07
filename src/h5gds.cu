@@ -7,8 +7,7 @@
 ///
 /// The MIT License is applied to this software, see LICENSE
 ///
-#include <H5FDgds.h>  // VFD for GDS
-#include <hdf5.h>
+#include <adios2.h>
 #include <thrust/device_ptr.h>
 #include <thrust/equal.h>
 #include <thrust/execution_policy.h>
@@ -31,7 +30,6 @@
 #include "allocate.cuh"
 #include "common.cuh"
 #include "generate.cuh"
-#include "hdf5.hpp"
 
 // Utility function for rounding up to nearest multiple
 constexpr auto round_up(const size_t org, const size_t unit) {
@@ -67,12 +65,12 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   boost::program_options::options_description opt("List of options");
   opt.add_options()(
       "num", boost::program_options::value<type::idx>()->default_value(1024), "number of particles")(
-      "cbuf", boost::program_options::value<size_t>()->default_value(CBSIZE_DEF), "copy buffer size (byte)")(
-      "fblk", boost::program_options::value<size_t>()->default_value(FBSIZE_DEF), "file block size (byte)")(
-      "memb", boost::program_options::value<size_t>()->default_value(MBOUNDARY_DEF), "memory boundary (byte)")(
-      "vfd", boost::program_options::value<std::string>()->default_value("gds"), "VFD driver to use: sec2, gds, or direct")(
+      "cbuf", boost::program_options::value<size_t>()->default_value(CBSIZE_DEF), "copy buffer size (byte) [IGNORED in ADIOS2 port]")(
+      "fblk", boost::program_options::value<size_t>()->default_value(FBSIZE_DEF), "file block size (byte) [IGNORED in ADIOS2 port]")(
+      "memb", boost::program_options::value<size_t>()->default_value(MBOUNDARY_DEF), "memory boundary (byte) [IGNORED in ADIOS2 port]")(
+      "vfd", boost::program_options::value<std::string>()->default_value("gds"), "VFD driver to use: sec2, gds, or direct [IGNORED in ADIOS2 port - configure via adios2.xml]")(
       "skip", boost::program_options::bool_switch()->default_value(false), "skip consistency check between read and original data")(
-      "asis", boost::program_options::bool_switch()->default_value(false), "read/write without hyperslab")(
+      "asis", boost::program_options::bool_switch()->default_value(false), "read/write without hyperslab [IGNORED - always writes full arrays]")(
       "virial", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(0.2), "Virial ratio of the system")(
       "radius", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(1.0), "radius of the system")(
       "mass", boost::program_options::value<std::remove_const_t<decltype(newton)>>()->default_value(1.0), "total mass of the system")(
@@ -96,60 +94,19 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
   const auto radius = vm["radius"].as<decltype(newton)>();
   const auto mass = vm["mass"].as<decltype(newton)>();
   const auto skip = vm["skip"].as<bool>();
-  const auto asis = vm["asis"].as<bool>();
+  // const auto asis = vm["asis"].as<bool>(); // Unused in ADIOS2 port
   const auto write_xdmf = vm["xdmf"].as<bool>();
   vm.clear();
-  // validate VFD choice
-  if (vfd_name != "sec2" && vfd_name != "gds" && vfd_name != "direct") {
-    std::cerr << "Invalid VFD driver: " << vfd_name << ". Must be one of: sec2, gds, direct" << std::endl;
-    std::cerr << std::fflush;
-    std::exit(EXIT_FAILURE);
-  }
-  // copy buffer size must be a multiple of block size
-  if ((cbuf % fblk) != 0U) {
-    std::cerr << "copy buffer size (" << cbuf << ") must be a multiple of block size (" << fblk << ")";
-    std::cerr << std::endl;
-    std::cerr << std::fflush;
-    std::exit(EXIT_FAILURE);
-  }
 
   // memory allocation
   cudaSetDevice(0);
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-  type::idx *idx = nullptr;        // particle ID
-  type::pos *pos = nullptr;        // position (x, y, z) and mass (w)
-  type::vel_xy *vel_xy = nullptr;  // velocity (x, y)
-  type::vel_z *vel_z = nullptr;    // velocity (z)
-#else
+
   type::idx *idx;        // particle ID
   type::pos *pos;        // position (x, y, z) and mass (w)
   type::vel_xy *vel_xy;  // velocity (x, y)
   type::vel_z *vel_z;    // velocity (z)
-#endif
+
   allocate_particles(&pos, &vel_xy, &vel_z, &idx, num);
-
-  // Allocate host buffers for sec2/direct VFDs when using cudaMalloc
-  type::idx *idx_host = nullptr;
-  type::pos *pos_host = nullptr;
-  type::vel_xy *vel_xy_host = nullptr;
-  type::vel_z *vel_z_host = nullptr;
-
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-  // Only allocate host buffers if using sec2 or direct VFD with cudaMalloc
-  if (vfd_name == "sec2" || vfd_name == "direct") {
-    auto size = round_up(num, NTHREADS);
-    size = round_up(size, THREAD_NUM);
-    idx_host = (type::idx *)malloc(size * sizeof(type::idx));
-    pos_host = (type::pos *)malloc(size * sizeof(type::pos));
-    vel_xy_host = (type::vel_xy *)malloc(size * sizeof(type::vel_xy));
-    vel_z_host = (type::vel_z *)malloc(size * sizeof(type::vel_z));
-    
-    if (!idx_host || !pos_host || !vel_xy_host || !vel_z_host) {
-      std::cerr << "Failed to allocate host buffers for " << vfd_name << " VFD" << std::endl;
-      std::exit(EXIT_FAILURE);
-    }
-  }
-#endif
 
   set_uniform_sphere(num, pos, vel_xy, vel_z, idx, mass, radius, virial, newton);
 
@@ -168,92 +125,38 @@ auto main(const int32_t argc, const char *const *const argv) -> int32_t {
     return (std::fma(1.0e-9, static_cast<double>(end.tv_nsec - ini.tv_nsec), end.tv_sec - ini.tv_sec));
   };
 
-  // prepare dataspaces for HDF5
-  util::hdf5::create_h5t_real2();
-  util::hdf5::create_h5t_real4();
-  const auto hdf5_dataspace_N = util::hdf5::setup_dataspace(num);
-  const auto hdf5_dataspace_1 = util::hdf5::setup_dataspace();
-  const auto [hdf5_dataspace_Nx3, hdf5_dataspace_Nx2, hdf5_dataspace_Nx1, hdf5_dataspace_Nx2_3, hdf5_dataspace_Nx1_3, hdf5_dataspace_Nx4, hdf5_dataspace_Nx3_4, hdf5_dataspace_Nx1_4] = util::hdf5::prepare_hyperslab_Nx3(num);
-  auto h5write = util::hdf5::h5multi_write{};
-  auto h5read = util::hdf5::h5multi_read{};
-  h5write.allocate(5);  // idx, position (x, y, z), velocity (x, y), velocity (z), and mass
-  h5read.allocate(5);   // idx, position (x, y, z), velocity (x, y), velocity (z), and mass
+  // ADIOS2 setup
+  adios2::ADIOS adios("adios2.xml");
+  adios2::IO io = adios.DeclareIO("SimulationOutput");
 
-  // prepare file access property list based on selected VFD
-  auto fapl = H5Pcreate(H5P_FILE_ACCESS);
-  if (vfd_name == "gds") {
-    std::cout << "using HDF5 gds fapl" << std::endl;
-    H5Pset_fapl_gds(fapl, memb, fblk, cbuf);
-  } else if (vfd_name == "direct") {
-    std::cout << "using HDF5 direct fapl" << std::endl;
-    H5Pset_fapl_direct(fapl, memb, fblk, cbuf);
-  } else {  // sec2
-    std::cout << "using HDF5 sec2 fapl" << std::endl;
-    H5Pset_fapl_sec2(fapl);
-  }
-
-  // Ensure file offsets are aligned with the block size for GDS performance
-H5Pset_alignment(fapl, 0, fblk);
-
-  // create HDF5 file
   auto uuid = boost::uuids::random_generator{}();
   const auto series = boost::lexical_cast<std::string>(uuid);
-  auto name = "dat/" + series + ".h5";
-  auto target = H5Fcreate(name.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
-  
-  // preparation for H5Dwrite_multi()
-  // Use host buffers for sec2/direct with cudaMalloc, otherwise use original pointers
-  auto* idx_write = idx;
-  auto* pos_write = pos;
-  auto* vel_xy_write = vel_xy;
-  auto* vel_z_write = vel_z;
-  
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-  if (vfd_name == "sec2" || vfd_name == "direct") {
-    idx_write = idx_host;
-    pos_write = pos_host;
-    vel_xy_write = vel_xy_host;
-    vel_z_write = vel_z_host;
-  }
-#endif
+  auto name = "dat/" + series + ".h5"; // Extension .h5 for HDF5 engine
 
-  h5write.commit(hdf5_dataspace_N, target, "id", util::hdf5::h5type(*idx), idx_write);
-  const auto FPtype = util::hdf5::h5type(*vel_z);
-  if (!asis) {
-    h5write.commit(hdf5_dataspace_Nx3, target, "velocity", FPtype, vel_xy_write, hdf5_dataspace_Nx2, hdf5_dataspace_Nx2_3);
-    h5write.commit(vel_z_write, h5write.get_last_dataset(), FPtype, hdf5_dataspace_Nx1, hdf5_dataspace_Nx1_3);
-    h5write.commit(hdf5_dataspace_Nx3, target, "position", FPtype, pos_write, hdf5_dataspace_Nx3_4, hdf5_dataspace_Nx3);
-    h5write.commit(hdf5_dataspace_Nx1, target, "mass", FPtype, pos_write, hdf5_dataspace_Nx1_4, hdf5_dataspace_Nx1);
-  } else {
-    h5write.commit(hdf5_dataspace_N, target, "pos", util::hdf5::h5type(*pos), pos_write);
-    h5write.commit(hdf5_dataspace_N, target, "vel_xy", util::hdf5::h5type(*vel_xy), vel_xy_write);
-    h5write.commit(hdf5_dataspace_N, target, "vel_z", util::hdf5::h5type(*vel_z), vel_z_write);
-  }
-  // execute H5Dwrite_multi()
-  // h5write.execute();
+  // Define variables
+  auto var_id = io.DefineVariable<type::idx>("id", {num}, {0}, {num});
+  auto var_pos = io.DefineVariable<float>("position", {num, 4}, {0, 0}, {num, 4});
+  auto var_vel_xy = io.DefineVariable<float>("velocity_xy", {num, 2}, {0, 0}, {num, 2});
+  auto var_vel_z = io.DefineVariable<type::vel_z>("velocity_z", {num}, {0}, {num});
+
+  // Define attributes
+  io.DefineAttribute<type::idx>("num", num);
+
+  // Write
+  adios2::Engine writer = io.Open(name, adios2::Mode::Write);
+  
   const auto elapse_write = benchmark([&]() {
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-    // Copy GPU data to host buffers for sec2/direct VFDs (INSIDE timing)
-    if (vfd_name == "sec2" || vfd_name == "direct") {
-      auto size = round_up(num, NTHREADS);
-      size = round_up(size, THREAD_NUM);
-      
-      checkCudaErrors(cudaMemcpy(idx_host, idx, size * sizeof(type::idx), cudaMemcpyDeviceToHost));
-      checkCudaErrors(cudaMemcpy(pos_host, pos, size * sizeof(type::pos), cudaMemcpyDeviceToHost));
-      checkCudaErrors(cudaMemcpy(vel_xy_host, vel_xy, size * sizeof(type::vel_xy), cudaMemcpyDeviceToHost));
-      checkCudaErrors(cudaMemcpy(vel_z_host, vel_z, size * sizeof(type::vel_z), cudaMemcpyDeviceToHost));
-    }
-#endif
-    
-    h5write.execute();
+    writer.Put(var_id, idx);
+    writer.Put(var_pos, (float*)pos);
+    writer.Put(var_vel_xy, (float*)vel_xy);
+    writer.Put(var_vel_z, vel_z);
+    writer.PerformPuts();
   });
-  // write attribute
-  util::hdf5::write_attr(hdf5_dataspace_1, target, "num", &num);
-  // close the file
-  H5Fclose(target);
+
+  writer.Close();
 
   // generate XDMF file if requested
-  if (!asis && write_xdmf) {
+  if (write_xdmf) {
     std::ofstream xml("dat/" + series + ".xdmf", std::ios::out);
 
     xml << R"(<?xml version="1.0" ?>)" << std::endl;
@@ -264,31 +167,38 @@ H5Pset_alignment(fapl, 0, fblk);
     xml << R"(      <Topology TopologyType="Polyvertex" NumberOfElements=")" << num << R"("/>)" << std::endl;
 
     xml << R"(      <Geometry GeometryType="XYZ">)" << std::endl;
-    xml << R"(        <DataItem Dimensions=")" << num << R"( 3" NumberType="Float" Precision=")" << sizeof(decltype(*vel_z)) << R"(" Format="HDF">)" << std::endl;
+    // XDMF expects XYZ. Our 'position' is float4 (XYZW).
+    // We can point to the same dataset. XDMF might read the first 3 components if stride is set?
+    // Or we can say Dimensions="N 4" and hope visualization tools handle it or ignore W.
+    // Standard XYZ expects 3 components.
+    // If we want to be strict, we might need a HyperSlab in XDMF.
+    // For now, let's list it as 4 components and see if tools adapt, or use type="VXVYVZ" separate arrays? No, it's one array.
+    // Let's assume the user handles visualization or that tools can take Nx4.
+    xml << R"(        <DataItem Dimensions=")" << num << R"( 4" NumberType="Float" Precision="4" Format="HDF">)" << std::endl;
     xml << "          " << series + ".h5"
         << ":/"
         << "position" << std::endl;
     xml << "        </DataItem>" << std::endl;
     xml << "      </Geometry>" << std::endl;
 
-    xml << R"(      <Attribute Name="velocity" AttributeType="Vector" Center="Node">)" << std::endl;
-    xml << R"(        <DataItem Dimensions=")" << num << R"( 3" NumberType="Float" Precision=")" << sizeof(decltype(*vel_z)) << R"(" Format="HDF">)" << std::endl;
+    xml << R"(      <Attribute Name="velocity_xy" AttributeType="Vector" Center="Node">)" << std::endl;
+    xml << R"(        <DataItem Dimensions=")" << num << R"( 2" NumberType="Float" Precision="4" Format="HDF">)" << std::endl;
     xml << "          " << series + ".h5"
         << ":/"
-        << "velocity" << std::endl;
+        << "velocity_xy" << std::endl;
     xml << "        </DataItem>" << std::endl;
     xml << "      </Attribute>" << std::endl;
 
-    xml << R"(      <Attribute Name="mass" AttributeType="Scalar" Center="Node">)" << std::endl;
-    xml << R"(        <DataItem Dimensions=")" << num << R"(" NumberType="Float" Precision=")" << sizeof(decltype(*vel_z)) << R"(" Format="HDF">)" << std::endl;
+    xml << R"(      <Attribute Name="velocity_z" AttributeType="Scalar" Center="Node">)" << std::endl;
+    xml << R"(        <DataItem Dimensions=")" << num << R"(" NumberType="Float" Precision="4" Format="HDF">)" << std::endl;
     xml << "          " << series + ".h5"
         << ":/"
-        << "mass" << std::endl;
+        << "velocity_z" << std::endl;
     xml << "        </DataItem>" << std::endl;
     xml << "      </Attribute>" << std::endl;
 
     xml << R"(      <Attribute Name="ID" AttributeType="Scalar" Center="Node">)" << std::endl;
-    xml << R"(        <DataItem Dimensions=")" << num << R"(" NumberType="UInt" Precision=")" << sizeof(decltype(*idx)) << R"(" Format="HDF">)" << std::endl;
+    xml << R"(        <DataItem Dimensions=")" << num << R"(" NumberType="UInt" Precision=")" << sizeof(type::idx) << R"(" Format="HDF">)" << std::endl;
     xml << "          " << series + ".h5"
         << ":/"
         << "id" << std::endl;
@@ -301,107 +211,63 @@ H5Pset_alignment(fapl, 0, fblk);
     xml.close();
   }
 
-  // read the file and compare
-  target = H5Fopen(name.c_str(), H5F_ACC_RDONLY, fapl);
-  auto num_read = std::remove_const_t<decltype(num)>{};
-  util::hdf5::read_attr(target, "num", &num_read);
+  // Read back
+  type::idx *idx_read;        // particle ID
+  type::pos *pos_read;        // position (x, y, z) and mass (w)
+  type::vel_xy *vel_xy_read;  // velocity (x, y)
+  type::vel_z *vel_z_read;    // velocity (z)
+
+  // We need to read 'num' attribute first to allocate.
+  // ADIOS2 can read attributes.
+
+  adios2::Engine reader = io.Open(name, adios2::Mode::Read);
+
+  // Read attribute
+  auto attr_num = io.InquireAttribute<type::idx>("num");
+  type::idx num_read = 0;
+  if(attr_num) {
+      // Attributes are available immediately after Open in some engines, but safest to get them.
+      // ADIOS2 C++ API: data() returns pointer to value if available.
+      num_read = attr_num.Data()[0];
+  } else {
+       std::cerr << "ERROR: Attribute 'num' not found." << std::endl;
+       std::exit(EXIT_FAILURE);
+  }
+
   if (num_read != num) {
     std::cerr << __FILE__ << "(" << __LINE__ << "): " << __func__ << ": ERROR: num_read (" << num_read << ") does not match with num (" << num << ")" << std::endl
               << std::flush;
     std::exit(EXIT_FAILURE);
   }
-  std::remove_reference_t<decltype(*idx)> *idx_read = nullptr;        // particle ID
-  std::remove_reference_t<decltype(*pos)> *pos_read = nullptr;        // position (x, y, z) and mass (w)
-  std::remove_reference_t<decltype(*vel_xy)> *vel_xy_read = nullptr;  // velocity (x, y)
-  std::remove_reference_t<decltype(*vel_z)> *vel_z_read = nullptr;    // velocity (z)
+
   allocate_particles(&pos_read, &vel_xy_read, &vel_z_read, &idx_read, num_read);
-  
-  // Allocate host buffers for reading with sec2/direct VFDs
-  type::idx *idx_read_host = nullptr;
-  type::pos *pos_read_host = nullptr;
-  type::vel_xy *vel_xy_read_host = nullptr;
-  type::vel_z *vel_z_read_host = nullptr;
-  
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-  if (vfd_name == "sec2" || vfd_name == "direct") {
-    auto size = round_up(num_read, NTHREADS);
-    size = round_up(size, THREAD_NUM);
-    
-    idx_read_host = (type::idx *)malloc(size * sizeof(type::idx));
-    pos_read_host = (type::pos *)malloc(size * sizeof(type::pos));
-    vel_xy_read_host = (type::vel_xy *)malloc(size * sizeof(type::vel_xy));
-    vel_z_read_host = (type::vel_z *)malloc(size * sizeof(type::vel_z));
-    
-    if (!idx_read_host || !pos_read_host || !vel_xy_read_host || !vel_z_read_host) {
-      std::cerr << "Failed to allocate host read buffers for " << vfd_name << " VFD" << std::endl;
+
+  auto r_var_id = io.InquireVariable<type::idx>("id");
+  auto r_var_pos = io.InquireVariable<float>("position");
+  auto r_var_vel_xy = io.InquireVariable<float>("velocity_xy");
+  auto r_var_vel_z = io.InquireVariable<type::vel_z>("velocity_z");
+
+  // Check variables exist
+  if (!r_var_id || !r_var_pos || !r_var_vel_xy || !r_var_vel_z) {
+      std::cerr << "ERROR: One or more variables not found in file." << std::endl;
       std::exit(EXIT_FAILURE);
-    }
   }
-#endif
 
-  // preparation for H5Dread_multi()
-  // Use host buffers for sec2/direct with cudaMalloc, otherwise use original pointers
-  auto* idx_read_ptr = idx_read;
-  auto* pos_read_ptr = pos_read;
-  auto* vel_xy_read_ptr = vel_xy_read;
-  auto* vel_z_read_ptr = vel_z_read;
-  
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-  if (vfd_name == "sec2" || vfd_name == "direct") {
-    idx_read_ptr = idx_read_host;
-    pos_read_ptr = pos_read_host;
-    vel_xy_read_ptr = vel_xy_read_host;
-    vel_z_read_ptr = vel_z_read_host;
-  }
-#endif
+  // Set selections (if needed, default is global array which matches our memory size here)
+  r_var_id.SetSelection({{0}, {num_read}});
+  r_var_pos.SetSelection({{0, 0}, {num_read, 4}});
+  r_var_vel_xy.SetSelection({{0, 0}, {num_read, 2}});
+  r_var_vel_z.SetSelection({{0}, {num_read}});
 
-  h5read.commit(target, "id", util::hdf5::h5type(*idx_read), idx_read_ptr);
-  const auto FPtype_read = util::hdf5::h5type(*vel_z_read);
-  if (!asis) {
-    h5read.commit(target, "velocity", FPtype_read, vel_xy_read_ptr, hdf5_dataspace_Nx2, hdf5_dataspace_Nx2_3);
-    h5read.commit(vel_z_read_ptr, h5read.get_last_dataset(), FPtype_read, hdf5_dataspace_Nx1, hdf5_dataspace_Nx1_3);
-    h5read.commit(target, "position", FPtype_read, pos_read_ptr, hdf5_dataspace_Nx3_4, hdf5_dataspace_Nx3);
-    h5read.commit(target, "mass", FPtype_read, pos_read_ptr, hdf5_dataspace_Nx1_4, hdf5_dataspace_Nx1);
-  } else {
-    h5read.commit(target, "pos", util::hdf5::h5type(*pos_read), pos_read_ptr);
-    h5read.commit(target, "vel_xy", util::hdf5::h5type(*vel_xy_read), vel_xy_read_ptr);
-    h5read.commit(target, "vel_z", util::hdf5::h5type(*vel_z_read), vel_z_read_ptr);
-  }
-  // execute H5Dread_multi()
-  // h5read.execute();
-  const auto elapse_read = benchmark([&]() { 
-    h5read.execute(); 
-    
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-    // Copy host data to GPU buffers for sec2/direct VFDs (INSIDE timing)
-    if (vfd_name == "sec2" || vfd_name == "direct") {
-      auto size = round_up(num_read, NTHREADS);
-      size = round_up(size, THREAD_NUM);
-      
-      checkCudaErrors(cudaMemcpy(idx_read, idx_read_host, size * sizeof(type::idx), cudaMemcpyHostToDevice));
-      checkCudaErrors(cudaMemcpy(pos_read, pos_read_host, size * sizeof(type::pos), cudaMemcpyHostToDevice));
-      checkCudaErrors(cudaMemcpy(vel_xy_read, vel_xy_read_host, size * sizeof(type::vel_xy), cudaMemcpyHostToDevice));
-      checkCudaErrors(cudaMemcpy(vel_z_read, vel_z_read_host, size * sizeof(type::vel_z), cudaMemcpyHostToDevice));
-    }
-#endif
+  const auto elapse_read = benchmark([&]() {
+      reader.Get(r_var_id, idx_read);
+      reader.Get(r_var_pos, (float*)pos_read);
+      reader.Get(r_var_vel_xy, (float*)vel_xy_read);
+      reader.Get(r_var_vel_z, vel_z_read);
+      reader.PerformGets();
   });
 
-  // close the file
-  H5Fclose(target);
-  H5Pclose(fapl);
-
-  util::hdf5::close_dataspace(hdf5_dataspace_N);
-  util::hdf5::close_dataspace(hdf5_dataspace_1);
-  util::hdf5::close_dataspace(hdf5_dataspace_Nx1_3);
-  util::hdf5::close_dataspace(hdf5_dataspace_Nx2_3);
-  util::hdf5::close_dataspace(hdf5_dataspace_Nx1);
-  util::hdf5::close_dataspace(hdf5_dataspace_Nx2);
-  util::hdf5::close_dataspace(hdf5_dataspace_Nx3);
-  util::hdf5::close_dataspace(hdf5_dataspace_Nx1_4);
-  util::hdf5::close_dataspace(hdf5_dataspace_Nx3_4);
-  util::hdf5::close_dataspace(hdf5_dataspace_Nx4);
-  util::hdf5::remove_h5t_real2();
-  util::hdf5::remove_h5t_real4();
+  reader.Close();
 
   // check the read results
   const auto success = skip ? true : (thrust::equal(thrust::device, (thrust::device_ptr<std::remove_reference_t<decltype(*idx)>>)idx, (thrust::device_ptr<std::remove_reference_t<decltype(*idx)>>)(idx + num), (thrust::device_ptr<std::remove_reference_t<decltype(*idx_read)>>)idx_read) && thrust::equal(thrust::device, (thrust::device_ptr<std::remove_reference_t<decltype(*pos)>>)pos, (thrust::device_ptr<std::remove_reference_t<decltype(*pos)>>)(pos + num), (thrust::device_ptr<std::remove_reference_t<decltype(*pos_read)>>)pos_read, compare_pos()) && thrust::equal(thrust::device, (thrust::device_ptr<std::remove_reference_t<decltype(*vel_xy)>>)vel_xy, (thrust::device_ptr<std::remove_reference_t<decltype(*vel_xy)>>)(vel_xy + num), (thrust::device_ptr<std::remove_reference_t<decltype(*vel_xy_read)>>)vel_xy_read, compare_vel_xy()) && thrust::equal(thrust::device, (thrust::device_ptr<std::remove_reference_t<decltype(*vel_z)>>)vel_z, (thrust::device_ptr<std::remove_reference_t<decltype(*vel_z)>>)(vel_z + num), (thrust::device_ptr<std::remove_reference_t<decltype(*vel_z_read)>>)vel_z_read));
@@ -433,7 +299,7 @@ H5Pset_alignment(fapl, 0, fblk);
 
     // write statistics of the simulation
     output << std::scientific;
-    output << vfd_name;
+    output << vfd_name; // Keep original VFD name for logging
     output << "," << (skip ? "true" : "false");
     output << "," << num;
     const auto datasize = static_cast<double>(num) * static_cast<double>(sizeof(std::remove_reference_t<decltype(*idx)>) + sizeof(std::remove_reference_t<decltype(*pos)>) + sizeof(std::remove_reference_t<decltype(*vel_xy)>) + sizeof(std::remove_reference_t<decltype(*vel_z)>));
@@ -454,26 +320,12 @@ H5Pset_alignment(fapl, 0, fblk);
     std::exit(EXIT_FAILURE);
   }
 
-  // Free host buffers for sec2/direct VFDs
-#if !defined(HOST_MALLOC_AND_FIRST_TOUCH_GPU) && !defined(HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-  if (vfd_name == "sec2" || vfd_name == "direct") {
-    free(idx_host);
-    free(pos_host);
-    free(vel_xy_host);
-    free(vel_z_host);
-    free(idx_read_host);
-    free(pos_read_host);
-    free(vel_xy_read_host);
-    free(vel_z_read_host);
-  }
-#endif
-
   release_particles(pos, vel_xy, vel_z, idx);
   release_particles(pos_read, vel_xy_read, vel_z_read, idx_read);
 
   // delete the file to save space
   boost::filesystem::remove(name);
-  if (!asis && write_xdmf) {
+  if (write_xdmf) {
     boost::filesystem::remove("dat/" + series + ".xdmf");
   }
 

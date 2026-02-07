@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<adios-config>
+
+    <!-- Configuration for ADIOS2 Output/Input using HDF5 engine -->
+    <io name="SimulationOutput">
+        <engine type="HDF5">
+            <!-- Parameters specific to HDF5 engine can be added here if needed -->
+            <!-- For example, enabling GDS or other features -->
+            <!-- <parameter key="H5_Use_GDS" value="true"/> -->
+        </engine>
+    </io>
+
+</adios-config>
