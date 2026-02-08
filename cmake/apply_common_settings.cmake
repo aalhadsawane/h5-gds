@@ -26,6 +26,8 @@ find_package(Boost REQUIRED COMPONENTS program_options filesystem timer system)
 
 # find ADIOS2 (only for h5gds project)
 if(PROJECT_NAME STREQUAL "h5gds")
+  # Ensure MPI is found first as ADIOS2 depends on it
+  find_package(MPI REQUIRED)
   find_package(ADIOS2 REQUIRED)
 
   # Check for GDS VFD availability (for runtime environment setup)
