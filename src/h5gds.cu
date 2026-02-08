@@ -31,6 +31,11 @@
 #include "common.cuh"
 #include "generate.cuh"
 
+// Default buffer sizes (restored from legacy hdf5.hpp/common)
+constexpr size_t CBSIZE_DEF = 4ULL * 1024ULL * 1024ULL; // 4MB
+constexpr size_t FBSIZE_DEF = 4ULL * 1024ULL;           // 4KB
+constexpr size_t MBOUNDARY_DEF = 1ULL * 1024ULL * 1024ULL; // 1MB
+
 // Utility function for rounding up to nearest multiple
 constexpr auto round_up(const size_t org, const size_t unit) {
   const size_t mod = org % unit;

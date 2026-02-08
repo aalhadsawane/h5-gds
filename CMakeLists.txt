@@ -112,13 +112,17 @@ target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
   ${CUDA_samples_INCLUDE_DIRS}
 )
 
-# Link cuFile library
+# Link cuFile library and include directories
 find_library(CUFILE_LIBRARY cufile HINTS /usr/local/cuda/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/targets/x86_64-linux/lib)
-if(NOT CUFILE_LIBRARY)
-  message(WARNING "cuFile library not found. Binary GDS benchmark may not link properly.")
+find_path(CUFILE_INCLUDE_DIR cufile.h HINTS /usr/local/cuda/include ${CUDA_TOOLKIT_ROOT_DIR}/include ${CUDA_TOOLKIT_ROOT_DIR}/targets/x86_64-linux/include)
+
+if(NOT CUFILE_LIBRARY OR NOT CUFILE_INCLUDE_DIR)
+  message(WARNING "cuFile library or headers not found. Binary GDS benchmark may not build properly. Lib: ${CUFILE_LIBRARY}, Inc: ${CUFILE_INCLUDE_DIR}")
 else()
   message(STATUS "Found cuFile library: ${CUFILE_LIBRARY}")
+  message(STATUS "Found cuFile include: ${CUFILE_INCLUDE_DIR}")
   target_link_libraries(${PROJECT_NAME} PRIVATE ${CUFILE_LIBRARY})
+  target_include_directories(${PROJECT_NAME} PRIVATE ${CUFILE_INCLUDE_DIR})
 endif()
 
 # Configure first-touch memory allocation mode (same as h5gds)
