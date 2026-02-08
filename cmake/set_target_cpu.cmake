@@ -34,9 +34,8 @@ endif("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM" OR "${CMAKE_CXX_COMPILER_ID
 
 # NVHPC: -tp=[zen3 zen2 skylake native]
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "NVHPC")
-    set(TARGET_CPU native CACHE STRING "target CPU architecture")
-    set_property(CACHE TARGET_CPU PROPERTY STRINGS zn3 zn2 skylake native)
-    set(SET_TARGET_CPU "-tp=${TARGET_CPU}")
+    # Miyabi (Grace Hopper) requires -tp to be empty to avoid nvcc errors
+    set(SET_TARGET_CPU "")
 endif("${CMAKE_CXX_COMPILER_ID}" MATCHES "NVHPC")
 
 # output the specified CPU
