@@ -31,6 +31,9 @@ if(PROJECT_NAME STREQUAL "h5gds")
   find_package(MPI REQUIRED)
   find_package(ADIOS2 REQUIRED)
 
+  # Find HDF5 to ensure proper linking/rpath for shared libraries
+  find_package(HDF5 REQUIRED COMPONENTS C)
+
   # Check for GDS VFD availability (for runtime environment setup)
   find_package(HDF5VFD_GDS REQUIRED COMPONENTS C)
   if(HDF5VFD_GDS_FOUND)
@@ -45,10 +48,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   ${Boost_LIBRARIES}
 )
 
-# Link ADIOS2 only for h5gds project
+# Link ADIOS2 and HDF5 only for h5gds project
 if(PROJECT_NAME STREQUAL "h5gds")
   target_link_libraries(${PROJECT_NAME} PRIVATE
     adios2::adios2
+    ${HDF5_LIBRARIES}
   )
 endif()
 
