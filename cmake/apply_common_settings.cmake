@@ -29,7 +29,8 @@ if(PROJECT_NAME STREQUAL "h5gds")
   # ADIOS2 depends on MPI::MPI_C, so we must enable C and find MPI
   enable_language(C)
   find_package(MPI REQUIRED)
-  find_package(ADIOS2 REQUIRED)
+  # Enforce CUDA component to ensure ADIOS2 supports GPU pointers
+  find_package(ADIOS2 REQUIRED COMPONENTS CXX MPI CUDA)
 
   # Find HDF5 to ensure proper linking/rpath for shared libraries
   find_package(HDF5 REQUIRED COMPONENTS C)

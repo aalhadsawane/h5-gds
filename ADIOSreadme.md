@@ -89,6 +89,8 @@ The `job.pbs` script handles the execution environment for Miyabi.
 
 ### Submitting a Job
 
+Execute the submission command from the project root directory:
+
 ```bash
 qsub job.pbs
 ```
@@ -149,4 +151,5 @@ Results are saved in `results/`.
 
 - **"HDF5 Driver not found"**: Ensure `HDF5_PLUGIN_PATH` is correct and contains `libhdf5_vfd_gds.so`.
 - **"ADIOS2 HDF5 Engine Error"**: Check `adios2.xml` syntax and ensuring `HDF5_DRIVER` is compatible with the build.
+- **"Bad address" / Runtime Crash**: If you see `HDF5FDsec2.c ... Bad address`, it means ADIOS2 is trying to read GPU memory as CPU memory. This indicates **ADIOS2 was built without CUDA support**. Rebuild ADIOS2 using `scripts/build_adios2.sh` and ensure the `CUDA` component is found during `build.sh`.
 - **Performance Issues**: Verify GDS is active using `nvidia-smi` or profiling tools. Ensure `HDF5_DRIVER=gds` is set.
