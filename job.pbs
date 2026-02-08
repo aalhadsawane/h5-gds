@@ -133,7 +133,7 @@ mkdir -p "${DUMP}"
 
 # Copy executable and prepare directories
 cd "${ROOT}"
-cp -r ${PBS_O_WORKDIR}/bin .
+cp -r ${PBS_O_WORKDIR}/build/bin .
 cp ${PBS_O_WORKDIR}/adios2.xml .
 mkdir -p dat log
 
