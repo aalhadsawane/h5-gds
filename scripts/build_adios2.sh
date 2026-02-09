@@ -68,11 +68,15 @@ cd "${BUILD_DIR}"
 # -DADIOS2_USE_Python=OFF : Disable Python bindings (unless needed)
 # -DADIOS2_BUILD_EXAMPLES=OFF : Skip examples
 
+# Ensure CUDA compiler is found
+export CUDACXX=$(which nvcc)
+
 cmake "${SOURCE_DIR}" \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DADIOS2_USE_HDF5=ON \
     -DADIOS2_USE_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES=90 \
     -DADIOS2_USE_Fortran=OFF \
     -DADIOS2_USE_Python=OFF \
     -DADIOS2_BUILD_EXAMPLES=OFF \
