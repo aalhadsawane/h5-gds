@@ -11,32 +11,33 @@ This branch ports the codebase from direct HDF5 C-API usage to ADIOS2 C++ API, l
 
 ### 1. Build ADIOS2
 
-Since ADIOS2 is not available as a standard module, you must build it from source. Run this as a job on a compute node:
+Since ADIOS2 is not available as a standard module, you must build it from source. Run this as a job on a compute node (execute from the project root directory):
 
 ```bash
 qsub build_adios2.pbs
 ```
 
 This will:
-- Download ADIOS2 source to `dependencies/adios2-src`.
-- Build ADIOS2 with HDF5 and CUDA support (preventing "Bad address" errors).
+- Automatically download and build ADIOS2 in the `dependencies/` folder.
+- **Note:** It is safe to remove the `dependencies/` folder if you wish to trigger a fresh build. The scripts will re-download everything.
+- Build ADIOS2 with HDF5 and CUDA support.
 - Install to `dependencies/adios2/v2.10.2`.
-- Generate `adios2_env.sh` for environment setup.
+- Generate `adios2_env.sh`.
 
 **Wait for this job to complete before proceeding.**
 
 ### 2. Build Benchmark (`h5gds`)
 
-Once ADIOS2 is ready, build the application code. This handles CMake configuration and compilation.
+Once ADIOS2 is ready, build the application code. Run this from the project root directory:
 
 ```bash
 qsub build.pbs
 ```
 
 This script (`build.sh` run via PBS) will:
-- Load modules (`nvidia`, `cuda`, `hdf5`, `vfd-gds`).
+- Load required modules.
 - Source `adios2_env.sh`.
-- Download CUDA samples if missing.
+- Download CUDA samples into `dependencies/cuda-samples` if missing.
 - Build the `h5gds` executable.
 
 ## Manual Build (Interactive)
