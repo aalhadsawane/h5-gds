@@ -68,6 +68,11 @@ echo "=== Loaded Modules ==="
 module list
 echo ""
 
+echo "=== CUDA Compiler Check ==="
+which nvcc
+nvcc --version
+echo ""
+
 # Set ADIOS2 environment
 # Load generated environment script if present, otherwise assume system module or manual setup
 if [ -f "${PBS_O_WORKDIR}/adios2_env.sh" ]; then
