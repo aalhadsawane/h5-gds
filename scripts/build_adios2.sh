@@ -71,6 +71,10 @@ cd "${BUILD_DIR}"
 # Ensure CUDA compiler is found
 export CUDACXX=$(which nvcc)
 
+# Use GCC for C/C++ to ensure compatibility with NVCC host compiler logic
+export CC=gcc
+export CXX=g++
+
 cmake "${SOURCE_DIR}" \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
