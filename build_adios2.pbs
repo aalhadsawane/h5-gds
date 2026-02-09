@@ -1,0 +1,36 @@
+#!/bin/bash
+#PBS -q small-g
+#PBS -l select=1
+#PBS -l walltime=01:00:00
+#PBS -W group_list=jh250079
+#PBS -j oe
+#PBS -N build_adios2
+
+# ============================================
+# BUILD ADIOS2 SCRIPT (Runs on Compute Node)
+# ============================================
+
+# Navigate to submission directory
+cd ${PBS_O_WORKDIR}
+
+echo "=== ADIOS2 Build Job Start: $(date) ==="
+echo "Host: $(hostname)"
+echo "Working Directory: $(pwd)"
+
+# Run the ADIOS2 build script
+# This will download, build, and install ADIOS2 locally in ./dependencies
+# It also handles loading necessary modules
+./scripts/build_adios2.sh .
+
+EXIT_CODE=$?
+echo "=== ADIOS2 Build Job End: $(date) ==="
+echo "Exit Code: $EXIT_CODE"
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "ADIOS2 built successfully."
+    echo "Next step: qsub build.pbs"
+else
+    echo "ADIOS2 build failed."
+fi
+
+exit $EXIT_CODE
