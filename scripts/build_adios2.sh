@@ -91,7 +91,7 @@ cmake "${SOURCE_DIR}" \
     -DADIOS2_USE_DataMan=OFF \
     -DADIOS2_USE_Campaign=OFF \
     -DADIOS2_USE_MHS=OFF \
-    -DADIOS2_USE_EVPath=OFF \
+    -DADIOS2_USE_BP5=OFF \
     -DADIOS2_USE_SysVShMem=OFF \
     -DADIOS2_USE_UCX=OFF \
     -DADIOS2_USE_ZeroMQ=OFF \

@@ -1,49 +1,31 @@
 # Status Report: Porting h5gds to ADIOS2 on Miyabi
 
 ## Current Status
-We are stuck at the **ADIOS2 Build Configuration** stage.
+We are in the **ADIOS2 Build Configuration** phase.
+The core ADIOS2 libraries (C, CXX, MPI, CUDA) are building successfully with CUDA support (`Features: ... CUDA : ON`).
+However, the build fails during the linking stage of the utility tools (`bpls`, `adios2_reorganize`).
 
 ### The Problem
-The `h5gds` application requires ADIOS2 to be built with **CUDA support** to enable native GPU pointer handling (`Put` from device memory).
-However, the ADIOS2 build process (`scripts/build_adios2.sh`) finishes successfully but **fails to export the CUDA component**.
-
-**Error Log (h5gds build):**
-```
-CMake Error ... Could NOT find ADIOS2: missing: CUDA
-```
-
-**ADIOS2 Configuration Log:**
-```
--- Found adios2: ... found components: C CXX MPI
-```
-(Note: "CUDA" is missing from the found components list, even though `Cuda Compiler` was detected).
-
-### Root Cause Analysis
-1.  **CMake 3.31 Compatibility**: The Miyabi system uses CMake 3.31.1. This version strictly removes the `FindCUDA` module (Policy CMP0146).
-    *   ADIOS2 v2.10.2 (stable) might still rely on legacy `FindCUDA` logic or checks that fail under CMake 3.31, causing it to silently disable the CUDA component during configuration.
-2.  **Compiler Environment**: We are using `NVHPC` (nvc++) for C++ and `NVIDIA` (nvcc) for CUDA. Mixing these with standard GCC (for host compilation) requires careful flag setting (`CC=gcc`, `CXX=g++`) which we have applied, but the CMake configuration might still be rejecting the CUDA language enablement due to strict checks.
-
-### Attempts & Outcomes
-1.  **Original Build**: Failed with "Bad address" runtime error -> Diagnosis: ADIOS2 built without CUDA.
-2.  **Forcing Flags**: Added `-DADIOS2_USE_CUDA=ON` and `-DCMAKE_CUDA_ARCHITECTURES=90` to build script. -> Result: Build succeeds, but CUDA component still missing.
-3.  **Compiler Switch**: Switched `CC` and `CXX` to `gcc/g++` to match `nvcc` host compiler. -> Result: Build succeeds, CUDA compiler detected, but component *still* missing.
-
-### Proposed Solution
-1.  **Switch to ADIOS2 Master Branch**: The development branch of ADIOS2 likely contains fixes for CMake 3.31 compatibility and better CUDA toolkit detection (`FindCUDAToolkit` instead of `FindCUDA`).
-2.  **Legacy Policy**: Attempt to force `-DCMAKE_POLICY_DEFAULT_CMP0146=OLD` to restore `FindCUDA` behavior if sticking to v2.10.2.
-
-We will proceed with **Switching to ADIOS2 Master** as the most robust fix for modern CMake environments.
-
-### Update: Linker Errors on AArch64
-The build of ADIOS2 Master encountered a linker error:
+The build fails with linker errors:
 `undefined reference to sys_icache_invalidate` in `libadios2_dill.so`.
 
-**Root Cause:** The `libdill` library (used by SST, DataMan, Campaign engines) has architecture-specific code that is failing on the Grace Hopper (AArch64) environment with the GCC compiler version used.
+**Root Cause:**
+The `libdill` library (a dependency of `EVPath`, which is used by the default `BP5` engine and others like `SST`, `DataMan`) contains architecture-specific assembly code that is failing on the NVIDIA Grace Hopper (AArch64) environment with the current GCC compiler.
 
-**Resolution:** We have explicitly disabled optional engines that depend on `libdill`:
-*   `-DADIOS2_USE_SST=OFF`
-*   `-DADIOS2_USE_DataMan=OFF`
-*   `-DADIOS2_USE_Campaign=OFF`
-*   `-DADIOS2_USE_MHS=OFF`
+### Previous Attempts
+1.  **Disable Dependent Engines:** We explicitly disabled `SST`, `DataMan`, `Campaign`, and `MHS` engines.
+    *   **Result:** The build still failed because `BP5` (enabled by default) also depends on `EVPath`.
+2.  **Disable EVPath Directly:** We attempted to set `-DADIOS2_USE_EVPath=OFF`.
+    *   **Result:** CMake warned that `ADIOS2_USE_EVPath` is not a valid top-level option (it is controlled by engine enablement).
 
-This trims the build to the core functionality required for HDF5+CUDA support.
+### Current Resolution Strategy
+We have modified `scripts/build_adios2.sh` to explicitly disable **BP5** and other optional dependencies:
+*   `-DADIOS2_USE_BP5=OFF`
+*   `-DADIOS2_USE_SysVShMem=OFF`
+*   `-DADIOS2_USE_UCX=OFF`
+*   `-DADIOS2_USE_ZeroMQ=OFF`
+*   `-DADIOS2_USE_ZFP=OFF`
+*   `-DADIOS2_USE_SZ=OFF`
+
+**Rationale:**
+The target application `h5gds` only requires the **HDF5 engine**. By disabling `BP5` and other native ADIOS2 engines/features, we aim to completely remove the `EVPath` and `libdill` dependency, allowing the build to complete successfully.
