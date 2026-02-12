@@ -22,7 +22,8 @@ else
     echo "Using default base directory (project root): ${BASE_DIR}"
 fi
 
-ADIOS2_VERSION="v2.10.2" # Using a stable release tag
+# Use master branch to ensure compatibility with CMake 3.31+ and modern CUDA detection
+ADIOS2_VERSION="master"
 INSTALL_DIR="${BASE_DIR}/dependencies/adios2/${ADIOS2_VERSION}"
 BUILD_DIR="${BASE_DIR}/dependencies/adios2-build"
 SOURCE_DIR="${BASE_DIR}/dependencies/adios2-src"
@@ -51,9 +52,12 @@ echo "CUDA_HOME=$CUDA_HOME"
 mkdir -p "${BASE_DIR}/dependencies"
 if [ ! -d "${SOURCE_DIR}" ]; then
     echo "Cloning ADIOS2 (${ADIOS2_VERSION})..."
-    git clone --depth 1 --branch ${ADIOS2_VERSION} https://github.com/ornladios/ADIOS2.git "${SOURCE_DIR}"
+    git clone --depth 1 https://github.com/ornladios/ADIOS2.git "${SOURCE_DIR}"
 else
     echo "ADIOS2 source found at ${SOURCE_DIR}"
+    # Pull latest changes if using master
+    cd "${SOURCE_DIR}"
+    git pull
 fi
 
 # --- Configure ---
