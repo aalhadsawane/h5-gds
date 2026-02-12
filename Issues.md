@@ -33,3 +33,17 @@ CMake Error ... Could NOT find ADIOS2: missing: CUDA
 2.  **Legacy Policy**: Attempt to force `-DCMAKE_POLICY_DEFAULT_CMP0146=OLD` to restore `FindCUDA` behavior if sticking to v2.10.2.
 
 We will proceed with **Switching to ADIOS2 Master** as the most robust fix for modern CMake environments.
+
+### Update: Linker Errors on AArch64
+The build of ADIOS2 Master encountered a linker error:
+`undefined reference to sys_icache_invalidate` in `libadios2_dill.so`.
+
+**Root Cause:** The `libdill` library (used by SST, DataMan, Campaign engines) has architecture-specific code that is failing on the Grace Hopper (AArch64) environment with the GCC compiler version used.
+
+**Resolution:** We have explicitly disabled optional engines that depend on `libdill`:
+*   `-DADIOS2_USE_SST=OFF`
+*   `-DADIOS2_USE_DataMan=OFF`
+*   `-DADIOS2_USE_Campaign=OFF`
+*   `-DADIOS2_USE_MHS=OFF`
+
+This trims the build to the core functionality required for HDF5+CUDA support.
