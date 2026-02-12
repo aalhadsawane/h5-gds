@@ -87,9 +87,18 @@ cmake "${SOURCE_DIR}" \
     -DCMAKE_CUDA_ARCHITECTURES=90 \
     -DADIOS2_USE_Fortran=OFF \
     -DADIOS2_USE_Python=OFF \
+    -DADIOS2_USE_SST=OFF \
+    -DADIOS2_USE_DataMan=OFF \
     -DADIOS2_BUILD_EXAMPLES=OFF \
     -DADIOS2_BUILD_TESTING=OFF \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+
+# --- Debug Configuration ---
+echo "=== CMake Configuration Debug Info ==="
+grep "ADIOS2_HAVE_CUDA" CMakeCache.txt || echo "ADIOS2_HAVE_CUDA not found in cache"
+grep "ADIOS2_HAVE_HDF5" CMakeCache.txt || echo "ADIOS2_HAVE_HDF5 not found in cache"
+grep "CMAKE_CUDA_COMPILER" CMakeCache.txt || echo "CMAKE_CUDA_COMPILER not found in cache"
+echo "======================================"
 
 # --- Build & Install ---
 echo "Building ADIOS2 (using $(nproc) threads)..."
