@@ -57,11 +57,22 @@ else
     echo "ADIOS2 source found at ${SOURCE_DIR}"
     # Pull latest changes if using master
     cd "${SOURCE_DIR}"
+    # Reset to avoid conflicts if previously patched
+    git reset --hard HEAD
     git pull
 fi
 
+# --- Patch ---
+# Explicitly disable building utility tools (bpls, adios2_reorganize)
+# because they fail to link due to missing 'sys_icache_invalidate' in libdill on AArch64.
+# This does NOT affect the core libraries needed by h5gds.
+echo "Patching ADIOS2 to disable utility tools build..."
+sed -i 's/^[^#]*add_subdirectory(utils)/#add_subdirectory(utils)/' "${SOURCE_DIR}/source/CMakeLists.txt"
+
 # --- Configure ---
 echo "Configuring ADIOS2..."
+# Clean build directory to ensure fresh configuration (fix for cached variables)
+rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
@@ -91,7 +102,6 @@ cmake "${SOURCE_DIR}" \
     -DADIOS2_USE_DataMan=OFF \
     -DADIOS2_USE_Campaign=OFF \
     -DADIOS2_USE_MHS=OFF \
-    -DADIOS2_USE_BP5=OFF \
     -DADIOS2_USE_SysVShMem=OFF \
     -DADIOS2_USE_UCX=OFF \
     -DADIOS2_USE_ZeroMQ=OFF \

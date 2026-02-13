@@ -3,29 +3,25 @@
 ## Current Status
 We are in the **ADIOS2 Build Configuration** phase.
 The core ADIOS2 libraries (C, CXX, MPI, CUDA) are building successfully with CUDA support (`Features: ... CUDA : ON`).
-However, the build fails during the linking stage of the utility tools (`bpls`, `adios2_reorganize`).
 
 ### The Problem
-The build fails with linker errors:
-`undefined reference to sys_icache_invalidate` in `libadios2_dill.so`.
+The build fails during the linking stage of the utility tools (`bpls`, `adios2_reorganize`).
+Error: `undefined reference to sys_icache_invalidate` in `libadios2_dill.so`.
+This is due to `libdill` (a dependency of `EVPath` which is used by `BP5` and `FFS`) having incompatible assembly for the Grace Hopper AArch64 environment.
 
-**Root Cause:**
-The `libdill` library (a dependency of `EVPath`, which is used by the default `BP5` engine and others like `SST`, `DataMan`) contains architecture-specific assembly code that is failing on the NVIDIA Grace Hopper (AArch64) environment with the current GCC compiler.
+### Resolution Strategy
+1.  **Disable Utility Tools:**
+    *   Since `h5gds` only requires the core libraries and the HDF5 engine, the utility tools (`bpls`, etc.) are not strictly necessary for the application to run.
+    *   We have modified `scripts/build_adios2.sh` to patch `source/CMakeLists.txt` and disable `add_subdirectory(utils)`.
+    *   This prevents the build system from attempting to link the failing executables, allowing the core libraries to install successfully.
 
-### Previous Attempts
-1.  **Disable Dependent Engines:** We explicitly disabled `SST`, `DataMan`, `Campaign`, and `MHS` engines.
-    *   **Result:** The build still failed because `BP5` (enabled by default) also depends on `EVPath`.
-2.  **Disable EVPath Directly:** We attempted to set `-DADIOS2_USE_EVPath=OFF`.
-    *   **Result:** CMake warned that `ADIOS2_USE_EVPath` is not a valid top-level option (it is controlled by engine enablement).
+2.  **Clean Build:**
+    *   The build script now actively cleans the `dependencies/adios2-build` directory to ensure no stale CMake cache entries (like `ADIOS2_USE_SysVShMem=ON`) persist.
 
-### Current Resolution Strategy
-We have modified `scripts/build_adios2.sh` to explicitly disable **BP5** and other optional dependencies:
-*   `-DADIOS2_USE_BP5=OFF`
-*   `-DADIOS2_USE_SysVShMem=OFF`
-*   `-DADIOS2_USE_UCX=OFF`
-*   `-DADIOS2_USE_ZeroMQ=OFF`
-*   `-DADIOS2_USE_ZFP=OFF`
-*   `-DADIOS2_USE_SZ=OFF`
+3.  **Engine Configuration:**
+    *   We continue to explicitly disable optional engines (`SST`, `DataMan`, `Campaign`, `MHS`) to minimize dependencies.
+    *   `BP5` is enabled by default in ADIOS2 2.11+ and cannot be easily disabled via CMake options, but by skipping the tools build, we avoid the link error associated with its transport layer (`dill`/`EVPath`).
 
-**Rationale:**
-The target application `h5gds` only requires the **HDF5 engine**. By disabling `BP5` and other native ADIOS2 engines/features, we aim to completely remove the `EVPath` and `libdill` dependency, allowing the build to complete successfully.
+### Next Steps
+Run the updated `scripts/build_adios2.sh`. It should complete successfully and generate `adios2_env.sh`.
+Then run `qsub build.pbs` to compile `h5gds`.
