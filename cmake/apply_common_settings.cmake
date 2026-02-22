@@ -30,7 +30,7 @@ if(PROJECT_NAME STREQUAL "h5gds")
   enable_language(C)
   find_package(MPI REQUIRED)
   # Enforce CUDA component to ensure ADIOS2 supports GPU pointers
-  find_package(ADIOS2 REQUIRED COMPONENTS CXX MPI CUDA)
+  find_package(ADIOS2 REQUIRED COMPONENTS CXX MPI)
 
   # Find HDF5 to ensure proper linking/rpath for shared libraries
   find_package(HDF5 REQUIRED COMPONENTS C)

@@ -63,18 +63,39 @@ else
 fi
 
 # --- Patch ---
-# Explicitly disable building utility tools (bpls, adios2_reorganize)
-# because they fail to link due to missing 'sys_icache_invalidate' in libdill on AArch64.
-# This does NOT affect the core libraries needed by h5gds.
-echo "Patching ADIOS2 to disable utility tools build..."
+
+echo "Patching ADIOS2 to intercept sys_icache_invalidate on AArch64..."
+
+# 1. Inject the C-macro directly into the top of the dill arm64.c generator
+TMP_FILE=$(mktemp)
+cat << 'EOF' > "$TMP_FILE"
+/* Linux AArch64 Hotfix for Apple Cache Function */
+#ifndef __APPLE__
+void sys_icache_invalidate(void *start, unsigned long len) {
+    __builtin___clear_cache((char *)start, (char *)start + len);
+}
+#endif
+
+EOF
+cat "${SOURCE_DIR}/thirdparty/dill/dill/arm64.c" >> "$TMP_FILE"
+mv "$TMP_FILE" "${SOURCE_DIR}/thirdparty/dill/dill/arm64.c"
+
+# 2. Turn off ADIOS2 utility tools to save build time
 sed -i 's/^[^#]*add_subdirectory(utils)/#add_subdirectory(utils)/' "${SOURCE_DIR}/source/CMakeLists.txt"
 
 # --- Configure ---
 echo "Configuring ADIOS2..."
-# Clean build directory to ensure fresh configuration (fix for cached variables)
+# Clean build AND install directories to ensure a fresh slate
 rm -rf "${BUILD_DIR}"
+rm -rf "${INSTALL_DIR}"
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
+
+#echo "Configuring ADIOS2..."
+# Clean build directory to ensure fresh configuration (fix for cached variables)
+#rm -rf "${BUILD_DIR}"
+#mkdir -p "${BUILD_DIR}"
+#cd "${BUILD_DIR}"
 
 # Note: Adjust CMAKE_CXX_COMPILER if needed (e.g., nvc++)
 # -DADIOS2_USE_HDF5=ON : Enable HDF5 engine
