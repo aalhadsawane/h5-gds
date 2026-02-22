@@ -43,3 +43,5 @@ cmake -S . -B build \
     -DCUDA_SAMPLES_DIR=${CUDA_SAMPLES_DIR} \
     -DTARGET_GPU=NVIDIA_CC90 \
     -DUSE_SYSTEM_MALLOC=ON
+# 2. ACTUALLY COMPILE THE CODE
+cmake --build build --parallel 8
