@@ -1,6 +1,18 @@
-# miscellaneous files
-cmake.log
-make.log
-# directories for numerical simulations
-*build/
-*debug/
+
+# Build artifacts
+build/
+bin/
+dat/
+log/
+results/
+temp/
+
+# Dependencies
+dependencies/
+
+# IDE settings
+.vscode/
+
+# Editor files
+*.swp
+*~

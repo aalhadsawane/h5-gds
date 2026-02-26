@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -q debug-g
+#PBS -l select=1
+#PBS -l walltime=00:30:00
+#PBS -W group_list=jh250079
+#PBS -j oe
+#PBS -N build_h5gds
+
+# ============================================
+# BUILD SCRIPT (Runs on Compute Node)
+# ============================================
+
+# Navigate to submission directory
+cd ${PBS_O_WORKDIR}
+
+echo "=== Build Job Start: $(date) ==="
+echo "Host: $(hostname)"
+echo "Working Directory: $(pwd)"
+
+# Run the build script
+# This script handles module loading and environment setup internally
+./build.sh
+
+EXIT_CODE=$?
+echo "=== Build Job End: $(date) ==="
+echo "Exit Code: $EXIT_CODE"
+
+exit $EXIT_CODE

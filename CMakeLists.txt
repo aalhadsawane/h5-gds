@@ -91,45 +91,5 @@ else()
 endif()
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES ${NVIDIA_GPU_HARD})
 
-# compile benchmark code: GPUDirect Storage with binary files
-project(bingds CXX CUDA)
-message(STATUS "Generate ${PROJECT_NAME} ...")
-
-# define the executable
-set(SOURCES ${PROJECT_SOURCE_DIR}/src/bingds.cu ${PROJECT_SOURCE_DIR}/src/allocate.cu ${PROJECT_SOURCE_DIR}/src/generate.cu)
-
-add_executable(${PROJECT_NAME}
-  ${SOURCES}
-)
-
-find_package(CUDA REQUIRED)
-find_package(CUDA_samples REQUIRED)
-
-# apply common settings
-include(${USER_MODULE_PATH}/apply_common_settings.cmake)
-
-target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-  ${CUDA_samples_INCLUDE_DIRS}
-)
-
-# Link cuFile library
-find_library(CUFILE_LIBRARY cufile HINTS /usr/local/cuda/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/lib64 ${CUDA_TOOLKIT_ROOT_DIR}/targets/x86_64-linux/lib)
-if(NOT CUFILE_LIBRARY)
-  message(WARNING "cuFile library not found. Binary GDS benchmark may not link properly.")
-else()
-  message(STATUS "Found cuFile library: ${CUFILE_LIBRARY}")
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${CUFILE_LIBRARY})
-endif()
-
-# Configure first-touch memory allocation mode (same as h5gds)
-if(FIRST_TOUCH_MODE STREQUAL "GPU")
-  target_compile_definitions(${PROJECT_NAME} PUBLIC HOST_MALLOC_AND_FIRST_TOUCH_GPU)
-  message(STATUS "bingds: Using host malloc with GPU first-touch")
-elseif(FIRST_TOUCH_MODE STREQUAL "CPU")
-  target_compile_definitions(${PROJECT_NAME} PUBLIC HOST_MALLOC_AND_FIRST_TOUCH_CPU)
-  message(STATUS "bingds: Using host malloc with CPU first-touch")
-else()
-  message(STATUS "bingds: Using standard cudaMalloc")
-endif()
-set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES ${NVIDIA_GPU_HARD})
+# Binary GDS benchmark (bingds) removed as it's not part of the ADIOS2 port.
 

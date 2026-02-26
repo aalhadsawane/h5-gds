@@ -24,13 +24,24 @@ set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost REQUIRED COMPONENTS program_options filesystem timer system)
 
-# find HDF5 (only for h5gds project)
+# find ADIOS2 (only for h5gds project)
 if(PROJECT_NAME STREQUAL "h5gds")
+  # ADIOS2 depends on MPI::MPI_C, so we must enable C and find MPI
   enable_language(C)
+  find_package(MPI REQUIRED)
+  # Enforce CUDA component to ensure ADIOS2 supports GPU pointers
+  find_package(ADIOS2 REQUIRED COMPONENTS CXX MPI)
+
+  # Find HDF5 to ensure proper linking/rpath for shared libraries
   find_package(HDF5 REQUIRED COMPONENTS C)
-  
-  # find VFD for GDS
+
+  # Check for GDS VFD availability (for runtime environment setup)
   find_package(HDF5VFD_GDS REQUIRED COMPONENTS C)
+  if(HDF5VFD_GDS_FOUND)
+    message(STATUS "GDS VFD Library found at: ${HDF5VFD_GDS_LIBRARIES}")
+    # We do not link it directly as ADIOS2 loads it dynamically via HDF5,
+    # but finding it ensures the environment is correct.
+  endif()
 endif()
 
 # link libraries
@@ -38,11 +49,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   ${Boost_LIBRARIES}
 )
 
-# Link HDF5 only for h5gds project
+# Link ADIOS2 and HDF5 only for h5gds project
 if(PROJECT_NAME STREQUAL "h5gds")
   target_link_libraries(${PROJECT_NAME} PRIVATE
+    adios2::adios2
     ${HDF5_LIBRARIES}
-    ${HDF5VFD_GDS_LIBRARIES}
   )
 endif()
 
@@ -65,14 +76,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
   ${Boost_INCLUDE_DIRS}
 )
-
-# Include HDF5 only for h5gds project
-if(PROJECT_NAME STREQUAL "h5gds")
-  target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
-    ${HDF5_INCLUDE_DIRS}
-    ${HDF5VFDS_GDS_INCLUDE_DIRS}
-  )
-endif()
 
 # add definitions
 target_compile_definitions(${PROJECT_NAME} PUBLIC

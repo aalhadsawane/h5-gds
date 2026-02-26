@@ -43,7 +43,7 @@ FBLK_VALUES=(
 CBUF_MULTIPLIER_VALUES=(1)
 
 # VFD modes to test
-VFD_MODES=(sec2 gds-native gds-compat)
+VFD_MODES=(sec2 gds-native gds-compat direct)
 
 # GDS configuration files
 GDS_NATIVE_JSON="${PBS_O_WORKDIR}/disable_compat.json"
@@ -56,29 +56,39 @@ ITERATIONS=1
 # ENVIRONMENT SETUP
 # ============================================
 module purge
-module load cuda
-module unload nvidia
+# Load base modules
+module load nvidia/25.9
+module load nv-hpcx/25.9
+module load cuda/12.9
+module load hdf5/1.14.6
+# Load VFD GDS module
+module load vfd-gds/1.0.2
 
 echo "=== Loaded Modules ==="
 module list
 echo ""
 
-# Set HDF5 environment
-export HDF5_HOME=/work/jh250079/n14001/hdf5_install
-export PATH=$HDF5_HOME/bin:$PATH
-export LD_LIBRARY_PATH=$HDF5_HOME/lib:$LD_LIBRARY_PATH
+echo "=== CUDA Compiler Check ==="
+which nvcc
+nvcc --version
+echo ""
 
-# Set VFD-GDS environment
-export CPATH=/work/jh250079/n14001/vfd-gds/src:$CPATH
-export LD_LIBRARY_PATH=/work/jh250079/n14001/vfd-gds/build/bin:$LD_LIBRARY_PATH
-export HDF5_PLUGIN_PATH=/work/jh250079/n14001/h5-gds/build/bin/
+# Set ADIOS2 environment
+# Load generated environment script if present, otherwise assume system module or manual setup
+if [ -f "${PBS_O_WORKDIR}/adios2_env.sh" ]; then
+    source "${PBS_O_WORKDIR}/adios2_env.sh"
+else
+    echo "WARNING: adios2_env.sh not found. Assuming ADIOS2 is already in environment."
+fi
 
-# Set cuFile configuration for GDS
+# Set HDF5 Plugin Path for GDS VFD (Required for ADIOS2 HDF5 backend to find GDS driver)
+# Assuming VFD GDS is built in the standard location or provided via module
+export HDF5_PLUGIN_PATH=/work/jh250079/n14001/vfd-gds/build/bin:$HDF5_PLUGIN_PATH
+
+# Set cuFile configuration for GDS (ADIOS2 might use this if GDS is enabled via HDF5 engine)
 export CUFILE_ENV_PATH_JSON=${PBS_O_WORKDIR}/disable_compat.json
 
 echo "=== Environment Configuration ==="
-echo "HDF5_HOME: $HDF5_HOME"
-echo "HDF5_PLUGIN_PATH: $HDF5_PLUGIN_PATH"
 echo "CUDA_HOME: $CUDA_HOME"
 echo "CUFILE_ENV_PATH_JSON: $CUFILE_ENV_PATH_JSON"
 echo ""
@@ -128,7 +138,8 @@ mkdir -p "${DUMP}"
 
 # Copy executable and prepare directories
 cd "${ROOT}"
-cp -r ${PBS_O_WORKDIR}/bin .
+cp -r ${PBS_O_WORKDIR}/build/bin .
+cp ${PBS_O_WORKDIR}/adios2.xml .
 mkdir -p dat log
 
 echo "Working directory: ${ROOT}"
@@ -152,18 +163,27 @@ do
     echo "VFD MODE: ${VFD}"
     echo "========================================="
 
-    # Configure GDS mode and set actual VFD driver
+    # Configure GDS mode and set actual VFD driver via HDF5 environment variable
     if [ "$VFD" == "gds-native" ]; then
         export CUFILE_ENV_PATH_JSON="${GDS_NATIVE_JSON}"
+        export HDF5_DRIVER="gds"
         ACTUAL_VFD="gds"
         echo "Using GDS Native mode (disable_compat.json)"
     elif [ "$VFD" == "gds-compat" ]; then
         export CUFILE_ENV_PATH_JSON="${GDS_COMPAT_JSON}"
+        export HDF5_DRIVER="gds"
         ACTUAL_VFD="gds"
         echo "Using GDS Compat mode (force_compat.json)"
+    elif [ "$VFD" == "direct" ]; then
+        # For direct VFD (O_DIRECT)
+        unset CUFILE_ENV_PATH_JSON
+        export HDF5_DRIVER="direct"
+        ACTUAL_VFD="direct"
+        echo "Using HDF5 Direct VFD"
     else
         # For sec2, no JSON needed
         unset CUFILE_ENV_PATH_JSON
+        export HDF5_DRIVER="sec2"
         ACTUAL_VFD="$VFD"
     fi
 
